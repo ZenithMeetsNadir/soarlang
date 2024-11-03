@@ -13,4 +13,5 @@ zig-out/
 zig-cache/
 
 # custom testing files
-test
+test.wav
+test.txt

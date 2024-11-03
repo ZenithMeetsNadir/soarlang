@@ -1,7 +1,8 @@
 const std = @import("std");
-const byteparser = @import("byteparser.zig");
-const audiofile = @import("audiofile.zig");
 const assert = std.debug.assert;
+
+const byteparser = @import("../../parser/byteparser.zig");
+const AudioFile = @import("../../file/AudioFile.zig");
 
 pub const WavHeader = struct {
     pub const chunk_id_size = 4;
@@ -69,9 +70,9 @@ pub const WavHeader = struct {
 
         header.write(&subchunk2_id, subchunk2_id_offset);
 
-        header.setNumChannels(if (num_channels != null) num_channels.? else num_channels_default);
-        header.setSampleRate(if (sample_rate != null) sample_rate.? else sample_rate_default);
-        header.setBitsPerSample(if (bits_per_sample != null) bits_per_sample.? else bits_per_sample_default);
+        header.setNumChannels(num_channels orelse num_channels_default);
+        header.setSampleRate(sample_rate orelse sample_rate_default);
+        header.setBitsPerSample(bits_per_sample orelse bits_per_sample_default);
 
         return header;
     }
@@ -152,24 +153,79 @@ pub const WavHeader = struct {
 
 pub const WavFile = struct {
     path: []const u8,
-    header: WavHeader,
+    header: *WavHeader,
     data: []const u8,
 
-    pub fn @"export"(self: *WavFile) !void {
+    pub fn create(path: []const u8, header: WavHeader, data: []const u8, allocator: std.mem.Allocator) std.mem.Allocator.Error!*WavFile {
+        const file: *WavFile = try allocator.create(WavFile);
+        errdefer allocator.destroy(file);
+
+        const path_copy = try allocator.alloc(u8, path.len);
+        errdefer allocator.free(path_copy);
+        std.mem.copyForwards(u8, path_copy, path);
+        file.path = path_copy;
+
+        file.header = try allocator.create(WavHeader);
+        errdefer allocator.free(file.header);
+        std.mem.copyForwards(u8, &file.header.header_bytes, &header.header_bytes);
+
+        const data_copy = try allocator.alloc(u8, data.len);
+        std.mem.copyForwards(u8, data_copy, data);
+        file.data = data_copy;
+
+        return file;
+    }
+
+    pub fn dispose(self: *WavFile, create_allocator: std.mem.Allocator) void {
+        create_allocator.free(self.path);
+        create_allocator.destroy(self.header);
+        create_allocator.free(self.data);
+    }
+
+    pub fn @"export"(self: *const WavFile, allocator: std.mem.Allocator) !void {
         self.header.setSubchunk2Size(@intCast(self.data.len));
 
-        const allocator = std.heap.page_allocator;
-        const a_file: audiofile.AudioFile = (try audiofile.AudioFile.fromAnyAudio(self.*, allocator)).?;
-        defer allocator.free(a_file.data);
+        const a_file: *AudioFile = (try AudioFile.fromAnyAudio(self.*, allocator)).?;
+        defer allocator.destroy(a_file);
+        defer a_file.dispose(allocator);
+
         try a_file.save();
+    }
+
+    pub fn fromAudioFile(a_file: *const AudioFile, allocator: std.mem.Allocator) (std.mem.Allocator.Error || AudioFile.Error.InvalidExtension)!*WavFile {
+        if (!std.mem.eql(u8, std.fs.path.extension(a_file.path), ".wav"))
+            return AudioFile.Error.InvalidExtension;
+
+        const header_bytes = a_file.data[0..WavHeader.data_offset];
+        const header = WavHeader{ .header_bytes = header_bytes };
+        const data = a_file.data[WavHeader.data_offset..];
+
+        const file = try create(a_file.path, header, data, allocator);
+
+        return file;
     }
 };
 
-test "audio file" {
+test "audio file ops" {
+    const allocator = std.heap.page_allocator;
+
     const path = "test.wav";
     const header = WavHeader.construct(null, null, null);
-    const data = "tady jsou data hodně jich tu je";
+    const data = "loads of data";
 
-    var file = WavFile{ .path = path, .header = header, .data = data };
-    try file.@"export"();
+    const file = try WavFile.create(path, header, data, allocator);
+    defer allocator.destroy(file);
+    defer file.dispose(allocator);
+
+    try file.@"export"(allocator);
+
+    const a_file = try AudioFile.open("test.wav", allocator);
+    defer allocator.destroy(a_file);
+    defer a_file.dispose(allocator);
+
+    const cr_file = try WavFile.fromAudioFile(a_file, allocator);
+    defer allocator.destroy(a_file);
+    defer cr_file.dispose(allocator);
+
+    try std.testing.expect(std.mem.eql(u8, cr_file.data, "loads of data"));
 }
