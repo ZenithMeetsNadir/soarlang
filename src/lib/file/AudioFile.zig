@@ -1,7 +1,7 @@
 const std = @import("std");
 const fs = std.fs;
 
-const file = @import("file.zig");
+const file = @import("fileops.zig");
 const wave = @import("../audio/wave/wave.zig");
 
 const AudioFile = @This();
@@ -35,7 +35,7 @@ pub fn dispose(self: AudioFile, create_allocator: std.mem.Allocator) void {
 }
 
 pub fn open(path: []const u8, allocator: std.mem.Allocator) !*AudioFile {
-    const a_file = try create(path, .{}, allocator);
+    const a_file = try create(path, &[_]u8{}, allocator);
     errdefer allocator.destroy(a_file);
 
     try a_file.fetch(allocator);

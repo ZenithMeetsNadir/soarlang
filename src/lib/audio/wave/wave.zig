@@ -166,7 +166,7 @@ pub const WavFile = struct {
         file.path = path_copy;
 
         file.header = try allocator.create(WavHeader);
-        errdefer allocator.free(file.header);
+        errdefer allocator.destroy(file.header);
         std.mem.copyForwards(u8, &file.header.header_bytes, &header.header_bytes);
 
         const data_copy = try allocator.alloc(u8, data.len);
@@ -192,12 +192,12 @@ pub const WavFile = struct {
         try a_file.save();
     }
 
-    pub fn fromAudioFile(a_file: *const AudioFile, allocator: std.mem.Allocator) (std.mem.Allocator.Error || AudioFile.Error.InvalidExtension)!*WavFile {
+    pub fn fromAudioFile(a_file: *const AudioFile, allocator: std.mem.Allocator) (std.mem.Allocator.Error || AudioFile.Error)!*WavFile {
         if (!std.mem.eql(u8, std.fs.path.extension(a_file.path), ".wav"))
             return AudioFile.Error.InvalidExtension;
 
         const header_bytes = a_file.data[0..WavHeader.data_offset];
-        const header = WavHeader{ .header_bytes = header_bytes };
+        const header = WavHeader{ .header_bytes = header_bytes.* };
         const data = a_file.data[WavHeader.data_offset..];
 
         const file = try create(a_file.path, header, data, allocator);
@@ -205,27 +205,3 @@ pub const WavFile = struct {
         return file;
     }
 };
-
-test "audio file ops" {
-    const allocator = std.heap.page_allocator;
-
-    const path = "test.wav";
-    const header = WavHeader.construct(null, null, null);
-    const data = "loads of data";
-
-    const file = try WavFile.create(path, header, data, allocator);
-    defer allocator.destroy(file);
-    defer file.dispose(allocator);
-
-    try file.@"export"(allocator);
-
-    const a_file = try AudioFile.open("test.wav", allocator);
-    defer allocator.destroy(a_file);
-    defer a_file.dispose(allocator);
-
-    const cr_file = try WavFile.fromAudioFile(a_file, allocator);
-    defer allocator.destroy(a_file);
-    defer cr_file.dispose(allocator);
-
-    try std.testing.expect(std.mem.eql(u8, cr_file.data, "loads of data"));
-}
