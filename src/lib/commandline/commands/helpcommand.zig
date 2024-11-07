@@ -1,7 +1,7 @@
 const std = @import("std");
 const ICommand = @import("../ICommand.zig");
 const commandlist = @import("../commandlist.zig");
-const CommandArgsError = @import("../execute.zig").CommandArgsError;
+const CommandArgsError = @import("../clineerror.zig").CommandArgsError;
 
 pub const help_command: ICommand = .{ .name = "help", .description = "log every existing command", .execute = execute };
 

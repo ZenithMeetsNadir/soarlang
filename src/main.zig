@@ -1,6 +1,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
-const execute = @import("lib/commandline/execute.zig");
+const execute = @import("lib/commandline/commandexec.zig");
 const CommandAdressingError = execute.CommandAdressingError;
 
 pub fn main() !void {
@@ -11,12 +11,11 @@ pub fn main() !void {
     const args: []const [:0]u8 = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    const log = execute.executeCommand(args) catch |err| blk: {
-        break :blk switch (err) {
-            CommandAdressingError.NoCommandProvided => "error no command provided\n",
-            CommandAdressingError.UnknownCommand => "no such command exists\n",
-        };
-    };
+    std.debug.print("<DEBUG>\n", .{});
+    for (args) |arg| {
+        std.debug.print("{s}\n", .{arg});
+    }
+    std.debug.print("</DEBUG>\n\n", .{});
 
-    std.debug.print("{s}", .{log});
+    execute.executePrintOutput(args);
 }
