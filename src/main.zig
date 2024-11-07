@@ -1,7 +1,7 @@
 const std = @import("std");
 const assert = std.debug.assert;
-const execute = @import("lib/commandline/commandexec.zig");
-const CommandAdressingError = execute.CommandAdressingError;
+const commandexec = @import("lib/commandline/commandexec.zig");
+const CommandAdressingError = commandexec.CommandAdressingError;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -17,5 +17,5 @@ pub fn main() !void {
     }
     std.debug.print("</DEBUG>\n\n", .{});
 
-    execute.executePrintOutput(args);
+    commandexec.executePrintOutput(args);
 }

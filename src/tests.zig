@@ -1,17 +1,18 @@
 const std = @import("std");
 const expect = std.testing.expect;
 
-const wave = @import("lib/audio/wave/wave.zig");
+const WavFile = @import("lib/audio/wave/WavFile.zig");
+const WavHeader = @import("lib/audio/wave/WavHeader.zig");
 const AudioFile = @import("lib/file/AudioFile.zig");
 
 test "audio file r/w" {
     const allocator = std.heap.page_allocator;
 
     const path = "test.wav";
-    const header = wave.WavHeader.construct(null, null, null);
+    const header = WavHeader.construct(null, null, null);
     const data = "loads of data";
 
-    const file = try wave.WavFile.create(path, header, data, allocator);
+    const file = try WavFile.create(path, header, data, allocator);
     defer allocator.destroy(file);
     defer file.dispose(allocator);
 
@@ -21,7 +22,7 @@ test "audio file r/w" {
     defer allocator.destroy(a_file);
     defer a_file.dispose(allocator);
 
-    const cr_file = try wave.WavFile.fromAudioFile(a_file, allocator);
+    const cr_file = try WavFile.fromAudioFile(a_file, allocator);
     defer allocator.destroy(cr_file);
     defer cr_file.dispose(allocator);
 

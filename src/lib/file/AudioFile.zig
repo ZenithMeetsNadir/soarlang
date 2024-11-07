@@ -1,9 +1,8 @@
 const std = @import("std");
 const fs = std.fs;
 
-const file = @import("fileops.zig");
-const wave = @import("../audio/wave/wave.zig");
-
+const fileops = @import("fileops.zig");
+const WavFile = @import("../audio/wave/WavFile.zig");
 const AudioFile = @This();
 
 pub const AudioFileError = error{
@@ -44,17 +43,17 @@ pub fn open(path: []const u8, allocator: std.mem.Allocator) !*AudioFile {
 }
 
 pub fn fetch(self: *AudioFile, allocator: std.mem.Allocator) (fs.File.OpenError || std.mem.Allocator.Error || fs.File.GetSeekPosError || fs.File.ReadError)!void {
-    self.data = try file.readFile(self.path, allocator);
+    self.data = try fileops.readFile(self.path, allocator);
 }
 
 pub fn save(self: AudioFile) (std.fs.File.OpenError || std.fs.File.WriteError)!void {
-    try file.saveFile(self.path, self.data);
+    try fileops.saveFile(self.path, self.data);
 }
 
 pub fn fromAnyAudio(audio: anytype, allocator: std.mem.Allocator) std.mem.Allocator.Error!?*AudioFile {
     switch (@TypeOf(audio)) {
-        wave.WavFile => {
-            const wav_audio = @as(wave.WavFile, audio);
+        WavFile => {
+            const wav_audio = @as(WavFile, audio);
             const data = try std.mem.concat(allocator, u8, &[_][]const u8{ &wav_audio.header.header_bytes, wav_audio.data });
 
             const a_file: *AudioFile = try create(wav_audio.path, data, allocator);

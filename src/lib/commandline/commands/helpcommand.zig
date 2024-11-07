@@ -3,7 +3,7 @@ const ICommand = @import("../ICommand.zig");
 const commandlist = @import("../commandlist.zig");
 const CommandArgsError = @import("../clineerror.zig").CommandArgsError;
 
-pub const help_command: ICommand = .{ .name = "help", .description = "log every existing command", .execute = execute };
+pub const help_command: ICommand = .{ .name = "help", .description = "prints every existing command along with its brief description", .execute = execute };
 
 fn execute(args: []const []const u8) CommandArgsError![]const u8 {
     if (args.len > 2)
