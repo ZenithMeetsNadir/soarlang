@@ -6,7 +6,7 @@ const wave = @import("../audio/wave/wave.zig");
 
 const AudioFile = @This();
 
-pub const Error = error{
+pub const AudioFileError = error{
     InvalidExtension,
 };
 
