@@ -15,3 +15,6 @@ zig-cache/
 # custom testing files
 test.wav
 test.txt
+test.soar
+
+src/examples/*.txt
