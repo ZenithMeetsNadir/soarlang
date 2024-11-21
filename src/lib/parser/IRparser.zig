@@ -25,6 +25,11 @@ pub const ArgumentIterator = struct {
                 break word;
         } else null;
     }
+
+    pub fn first(self: *ArgumentIterator) []const u8 {
+        self.line_iter.index = 0;
+        return self.line_iter.first();
+    }
 };
 
 pub const InstructionIterator = struct {

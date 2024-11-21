@@ -22,6 +22,10 @@ pub fn wordValue(tape: []const u8, address: usize) AddressError!isize {
     return byteparser.assemb(isize, try word(tape, address), globals.soar_lang_endian);
 }
 
+pub fn wordUnsigned(tape: []const u8, address: usize) AddressError!usize {
+    return byteparser.assemb(usize, try word(tape, address), globals.soar_lang_endian);
+}
+
 pub fn wordFloat(tape: []const u8, address: usize) AddressError!float {
     return byteparser.assemb(float, try word(tape, address), globals.soar_lang_endian);
 }
@@ -39,6 +43,10 @@ pub fn setWord(tape: []u8, address: usize, value: isize) AddressError!void {
     try setWordBytes(tape, address, byteparser.distr(isize, value, globals.soar_lang_endian));
 }
 
+pub fn setUnsigned(tape: []u8, address: usize, value: usize) AddressError!void {
+    try setWordBytes(tape, address, byteparser.distr(usize, value, globals.soar_lang_endian));
+}
+
 pub fn setFloat(tape: []u8, address: usize, value: float) AddressError!void {
     try setWordBytes(tape, address, byteparser.distr(float, value, globals.soar_lang_endian));
 }
@@ -49,6 +57,10 @@ pub fn toInt(tape: []u8, address: usize) AddressError!void {
 
 pub fn toFloat(tape: []u8, address: usize) AddressError!void {
     try setFloat(tape, address, @floatFromInt(wordValue(tape, address)));
+}
+
+pub fn initTape(tape: []u8) AddressError!void {
+    try setUnsigned(tape, globals.SP, globals.SP_value);
 }
 
 pub fn addWord(tape: []u8, address: usize, value: isize) AddressError!void {
@@ -80,6 +92,7 @@ pub fn decrementWord(tape: []u8, address: usize) AddressError!void {
 }
 
 pub fn push(tape: []u8, value: isize) MemoryError!void {
-    setWord(tape, wordValue(tape, globals.SP), value) catch return MemoryError.NotEnoughMemory;
-    incrementWord(tape, globals.SP) catch return MemoryError.NotEnoughMemory;
+    const sp_addr = wordUnsigned(tape, globals.SP) catch return MemoryError.NotEnoughMemory;
+    setWord(tape, sp_addr, value) catch return MemoryError.NotEnoughMemory;
+    addWord(tape, globals.SP, @sizeOf(usize)) catch return MemoryError.NotEnoughMemory;
 }
