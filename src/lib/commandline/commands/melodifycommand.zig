@@ -18,7 +18,7 @@ fn execute(args: []const []const u8) CommandArgsError![]const u8 {
     const source = fileops.readFile(path, std.heap.page_allocator) catch return "an unknown error occured while opening file";
     var source_iter = IRparser.tokenize(source);
 
-    interpret.interpret(&source_iter) catch return "an unknown error occured while interpreting source code";
+    interpret.interpret(&source_iter) catch |err| return @errorName(err);
 
     return "exit code 0";
 }

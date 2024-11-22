@@ -1,6 +1,7 @@
 const std = @import("std");
 const print = std.debug.print;
 
+const byteparser = @import("../parser/byteparser.zig");
 const IRparser = @import("../parser/IRparser.zig");
 const InstructionIterator = IRparser.InstructionIterator;
 const instruction = @import("instruction.zig");
@@ -103,37 +104,61 @@ pub fn unwrapArgs(arg_iter: *IRparser.ArgumentIterator, comptime arg_count: usiz
     return args;
 }
 
+pub fn convertInstrucion(instr_name: []const u8) u64 {
+    var output: [8]u8 = undefined;
+
+    for (instr_name, 0..) |char, index| {
+        if (index < 8)
+            output[index] = char;
+    }
+
+    return byteparser.assemb(u64, &output, .big);
+}
+
 pub fn interpret(instructions: *InstructionIterator) !void {
     try instruction.initTape(tape);
 
     var instr_null = instructions.next();
     while (instr_null != null) : (instr_null = instructions.next()) {
         var instr = instr_null.?;
-        const instr_name = instr.first();
+        const instr_num = convertInstrucion(instr.first());
 
-        if (std.mem.eql(u8, instr_name, "SET")) {
-            print("<SET instruction>\n", .{});
-            const args = try unwrapArgs(&instr, 2);
-            print("unwrapped args: {s}; {s}\n", .{ args[0], args[1] });
-            const address = try resolveAddress(args[0]);
-            print("resolved address: {d}\n", .{address});
-            const value = try resolveValue(args[1]);
-            print("resolved value: {d}\n", .{value});
+        switch (instr_num) {
+            convertInstrucion("PUT") => {
+                const args = try unwrapArgs(&instr, 1);
+                const value = try resolveValue(args[0]);
 
-            try instruction.setWord(tape, address, value);
-            print("value at address {d}: {d}\n", .{ address, try instruction.wordValue(tape, address) });
-            print("</SET intruction>\n\n", .{});
-        } else if (std.mem.eql(u8, instr_name, "PUSH")) {
-            print("<PUSH instruction>\n", .{});
-            const args = try unwrapArgs(&instr, 1);
-            print("unwrapped args: {s}\n", .{args[0]});
-            const value = try resolveValue(args[0]);
-            print("resolved value: {d}\n", .{value});
+                std.debug.print("{any}\n", .{value});
+            },
+            convertInstrucion("SET") => {
+                const args = try unwrapArgs(&instr, 2);
+                const address = try resolveAddress(args[0]);
+                const value = try resolveValue(args[1]);
 
-            try instruction.push(tape, value);
-            print("</PUSH instruction>\n\n", .{});
+                try instruction.setWord(tape, address, value);
+            },
+            convertInstrucion("PUSH") => {
+                const args = try unwrapArgs(&instr, 1);
+                const value = try resolveValue(args[0]);
+
+                try instruction.push(tape, value);
+            },
+            convertInstrucion("RESRV") => {
+                try instruction.reserve(tape);
+            },
+            convertInstrucion("ICAST") => {
+                const args = try unwrapArgs(&instr, 1);
+                const address = try resolveAddress(args[0]);
+
+                try instruction.toInt(tape, address);
+            },
+            convertInstrucion("FCAST") => {
+                const args = try unwrapArgs(&instr, 1);
+                const address = try resolveAddress(args[0]);
+
+                try instruction.toFloat(tape, address);
+            },
+            else => continue,
         }
     }
-
-    print("SP: {d}\n", .{try instruction.wordUnsigned(tape, globals.SP)});
 }
