@@ -3,6 +3,77 @@ const byteparser = @import("../parser/byteparser.zig");
 const globals = @import("globals.zig");
 const float = globals.float;
 
+pub const Instruction = enum {
+    // no args
+    /// allocate word on stack (increment SP by word size)
+    RESRV,
+
+    // <address>
+    /// cast float to int
+    CAST,
+    /// cast int to float
+    CASTF,
+    /// increment word
+    INC,
+    /// decrementc word
+    DEC,
+    /// increment by word size
+    INCWS,
+    /// decrement by word size
+    DECWS,
+
+    // <address> <address>
+
+    // <address> <value>
+    /// set word at address
+    SET,
+    /// set float at address
+    SETF,
+    /// add to word at address
+    ADD,
+    /// subtract from word at address
+    SUB,
+    /// multiply word at address
+    MUL,
+    /// divide word at address
+    DIV,
+    /// word modulus division at adress
+    MOD,
+
+    // <value>
+    /// print word to stderr
+    PUT,
+    /// print float to console
+    PUTF,
+    /// push word to stack (SET + RESRV)
+    PUSH,
+
+    pub fn fromString(instr_name: []const u8) ?Instruction {
+        return std.meta.stringToEnum(Instruction, instr_name);
+    }
+
+    pub fn inRange(instr: Instruction, start_inc: Instruction, end_inc: Instruction) bool {
+        const i: usize = @intFromEnum(instr);
+        return i >= @intFromEnum(start_inc) and i <= @intFromEnum(end_inc);
+    }
+
+    pub fn noArgs(instr: Instruction) bool {
+        return Instruction.inRange(instr, .RESRV, .RESRV);
+    }
+
+    pub fn aArg(instr: Instruction) bool {
+        return Instruction.inRange(instr, .CAST, .MOD);
+    }
+
+    pub fn avArg(instr: Instruction) bool {
+        return Instruction.inRange(instr, .SET, .MOD);
+    }
+
+    pub fn vArg(instr: Instruction) bool {
+        return Instruction.inRange(instr, .PUT, .PUSH);
+    }
+};
+
 pub const AddressError = error{
     BadAddress,
 };
@@ -64,7 +135,7 @@ pub fn initTape(tape: []u8) AddressError!void {
 }
 
 pub fn addWord(tape: []u8, address: usize, value: isize) AddressError!void {
-    try setWord(tape, address, try wordValue(tape, address) + value);
+    try setWord(tape, address, try wordValue(tape, address) +% value);
 }
 
 pub fn subtractWord(tape: []u8, address: usize, value: isize) AddressError!void {
@@ -72,15 +143,15 @@ pub fn subtractWord(tape: []u8, address: usize, value: isize) AddressError!void 
 }
 
 pub fn multiplyWord(tape: []u8, address: usize, value: isize) AddressError!void {
-    try setWord(tape, address, try wordValue(tape, address) * value);
+    try setWord(tape, address, try wordValue(tape, address) *% value);
 }
 
 pub fn divideWord(tape: []u8, address: usize, value: isize) AddressError!void {
-    try setWord(tape, address, try wordValue(tape, address) / value);
+    try setWord(tape, address, @divExact(try wordValue(tape, address), value));
 }
 
 pub fn modWord(tape: []u8, address: usize, value: isize) AddressError!void {
-    try setWord(tape, address, try wordValue(tape, address) % value);
+    try setWord(tape, address, @mod(try wordValue(tape, address), value));
 }
 
 pub fn incrementWord(tape: []u8, address: usize) AddressError!void {
@@ -106,5 +177,5 @@ pub fn reserve(tape: []u8) MemoryError!void {
 pub fn push(tape: []u8, value: isize) MemoryError!void {
     const sp_addr = wordUnsigned(tape, globals.SP) catch return MemoryError.NotEnoughMemory;
     setWord(tape, sp_addr, value) catch return MemoryError.NotEnoughMemory;
-    incrementWSize(tape, globals.SP) catch return MemoryError.NotEnoughMemory;
+    try reserve(tape);
 }

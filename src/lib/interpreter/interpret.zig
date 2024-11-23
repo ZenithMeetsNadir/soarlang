@@ -6,6 +6,7 @@ const IRparser = @import("../parser/IRparser.zig");
 const InstructionIterator = IRparser.InstructionIterator;
 const instruction = @import("instruction.zig");
 const globals = @import("globals.zig");
+const float = globals.float;
 const tape = &@import("tape.zig").tape;
 
 const ArgumentError = error{
@@ -16,72 +17,91 @@ const InstructionError = error{
     WrongNumberOfArguments,
 };
 
+fn condDeref(arg: []const u8, store_is_deref: *bool) []const u8 {
+    if (arg[0] == '[') {
+        store_is_deref.* = true;
+        return arg[1 .. arg.len - 1];
+    }
+
+    return arg;
+}
+
 pub fn resolveValue(val_str: []const u8) (ArgumentError || instruction.AddressError)!isize {
     if (val_str.len == 0)
         return ArgumentError.CouldNotParse;
 
-    var is_val_deref: bool = undefined;
-    const val_str_cpy = blk: {
-        if (val_str[0] == '[') {
-            is_val_deref = true;
-            break :blk val_str[1 .. val_str.len - 1];
-        }
+    var deref_value: bool = false;
+    const val_str_res = condDeref(val_str, &deref_value);
 
-        break :blk val_str;
-    };
+    print("\t\tderef_value: {any}\n", .{deref_value});
 
-    print("is_val_deref: {any}\n", .{is_val_deref});
-
-    var value: isize = std.fmt.parseInt(isize, val_str_cpy, 0) catch |err| blk: {
+    var value: isize = std.fmt.parseInt(isize, val_str_res, 0) catch |err| blk: {
         break :blk switch (err) {
             std.fmt.ParseIntError.Overflow => return ArgumentError.CouldNotParse,
             std.fmt.ParseIntError.InvalidCharacter => inv_char: {
-                print("referencing global: {s}\n", .{val_str_cpy});
-                const global_addr = globals.referenceGlobal(val_str_cpy) catch return ArgumentError.CouldNotParse;
-                print("referenced global - address: {d}\n", .{global_addr});
+                print("\t\treferencing global: {s}\n", .{val_str_res});
+                const global_addr = globals.referenceGlobal(val_str_res) catch return ArgumentError.CouldNotParse;
+                print("\t\treferenced global - address: {d}\n", .{global_addr});
                 break :inv_char try instruction.wordValue(tape, global_addr);
             },
         };
     };
 
-    print("value before possible dereference: {d}\n", .{value});
+    print("\t\tvalue: {d}\n", .{value});
 
-    if (is_val_deref) {
+    if (deref_value) {
         value = try instruction.wordValue(tape, @bitCast(value));
-        print("value after dereference: {d}\n", .{value});
+        print("\t\tvalue after dereference: {d}\n", .{value});
     }
 
     return value;
+}
+
+pub fn resolveFloat(float_str: []const u8) (ArgumentError || instruction.AddressError)!float {
+    if (float_str.len == 0)
+        return ArgumentError.CouldNotParse;
+
+    var deref_value = false;
+    const float_str_res = condDeref(float_str, &deref_value);
+
+    print("\t\tderef_value: {any}\n", .{deref_value});
+
+    if (deref_value)
+        return @bitCast(try resolveValue(float_str));
+
+    const flt: float = std.fmt.parseFloat(float, float_str_res) catch return ArgumentError.CouldNotParse;
+
+    print("\t\tfloat: {d}\n", .{flt});
+
+    return flt;
 }
 
 pub fn resolveAddress(addr_str: []const u8) (ArgumentError || instruction.AddressError)!usize {
     if (addr_str.len == 0)
         return ArgumentError.CouldNotParse;
 
-    var is_deref: bool = undefined;
-    const addr_str_cpy = blk: {
-        if (addr_str[0] == '[') {
-            is_deref = true;
-            break :blk addr_str[1 .. addr_str.len - 1];
-        }
+    var deref: bool = false;
+    const addr_str_res = condDeref(addr_str, &deref);
 
-        break :blk addr_str;
-    };
+    print("\t\tderef: {any}\n", .{deref});
 
-    print("is_deref: {any}\n", .{is_deref});
-
-    var address: usize = std.fmt.parseUnsigned(usize, addr_str_cpy, 0) catch |err| blk: {
+    var address: usize = std.fmt.parseUnsigned(usize, addr_str_res, 0) catch |err| blk: {
         break :blk switch (err) {
             std.fmt.ParseIntError.Overflow => return ArgumentError.CouldNotParse,
-            std.fmt.ParseIntError.InvalidCharacter => globals.referenceGlobal(addr_str_cpy) catch return ArgumentError.CouldNotParse,
+            std.fmt.ParseIntError.InvalidCharacter => inv_char: {
+                print("\t\treferencing global: {s}\n", .{addr_str_res});
+                const global_addr = globals.referenceGlobal(addr_str_res) catch return ArgumentError.CouldNotParse;
+                print("\t\treferenced global - address: {d}\n", .{global_addr});
+                break :inv_char global_addr;
+            },
         };
     };
 
-    print("address before possible dereference: {d}\n", .{address});
+    print("\t\taddress: {d}\n", .{address});
 
-    if (is_deref) {
+    if (deref) {
         address = try instruction.wordUnsigned(tape, address);
-        print("address after dereference: {d}\n", .{address});
+        print("\t\taddress after dereference: {d}\n", .{address});
     }
 
     return address;
@@ -91,9 +111,11 @@ pub fn unwrapArgs(arg_iter: *IRparser.ArgumentIterator, comptime arg_count: usiz
     var args: [arg_count][]const u8 = undefined;
 
     var index: usize = 0;
-    while (arg_iter.next()) |arg| : (index += 1) {
+    while (arg_iter.peek()) |arg| : (index += 1) {
         if (index >= args.len)
-            return InstructionError.WrongNumberOfArguments;
+            return args;
+
+        _ = arg_iter.next();
 
         args[index] = arg;
     }
@@ -104,61 +126,68 @@ pub fn unwrapArgs(arg_iter: *IRparser.ArgumentIterator, comptime arg_count: usiz
     return args;
 }
 
-pub fn convertInstrucion(instr_name: []const u8) u64 {
-    var output: [8]u8 = undefined;
-
-    for (instr_name, 0..) |char, index| {
-        if (index < 8)
-            output[index] = char;
-    }
-
-    return byteparser.assemb(u64, &output, .big);
-}
-
-pub fn interpret(instructions: *InstructionIterator) !void {
+pub fn interpret(instr_iter: *InstructionIterator) !void {
     try instruction.initTape(tape);
 
-    var instr_null = instructions.next();
-    while (instr_null != null) : (instr_null = instructions.next()) {
-        var instr = instr_null.?;
-        const instr_num = convertInstrucion(instr.first());
+    var instr_null = instr_iter.next();
+    while (instr_null != null) : (instr_null = instr_iter.next()) {
+        var line = instr_null.?;
+        const instr_name = line.first();
 
-        switch (instr_num) {
-            convertInstrucion("PUT") => {
-                const args = try unwrapArgs(&instr, 1);
-                const value = try resolveValue(args[0]);
+        const instr = instruction.Instruction.fromString(instr_name) orelse continue;
+        print("\n<instruction: {s}>\n", .{@tagName(instr)});
 
-                std.debug.print("{any}\n", .{value});
-            },
-            convertInstrucion("SET") => {
-                const args = try unwrapArgs(&instr, 2);
-                const address = try resolveAddress(args[0]);
-                const value = try resolveValue(args[1]);
+        if (instruction.Instruction.noArgs(instr)) {
+            switch (instr) {
+                .RESRV => try instruction.reserve(tape),
+                else => unreachable,
+            }
+        } else if (instruction.Instruction.aArg(instr)) {
+            var args = try unwrapArgs(&line, 1);
+            print("\t<arg1: {s}>\n", .{args[0]});
+            const address = try resolveAddress(args[0]);
 
-                try instruction.setWord(tape, address, value);
-            },
-            convertInstrucion("PUSH") => {
-                const args = try unwrapArgs(&instr, 1);
-                const value = try resolveValue(args[0]);
+            switch (instr) {
+                .CAST => try instruction.toInt(tape, address),
+                .CASTF => try instruction.toFloat(tape, address),
+                .INC => try instruction.incrementWord(tape, address),
+                .DEC => try instruction.decrementWord(tape, address),
+                .INCWS => try instruction.incrementWSize(tape, address),
+                .DECWS => try instruction.decrementWSize(tape, address),
+                else => {
+                    if (instruction.Instruction.avArg(instr)) {
+                        args = try unwrapArgs(&line, 1);
+                        print("\t<arg2: {s}>\n", .{args[0]});
 
-                try instruction.push(tape, value);
-            },
-            convertInstrucion("RESRV") => {
-                try instruction.reserve(tape);
-            },
-            convertInstrucion("ICAST") => {
-                const args = try unwrapArgs(&instr, 1);
-                const address = try resolveAddress(args[0]);
+                        // TODO fix resolve only one way
+                        const value = try resolveValue(args[0]);
+                        const flt = try resolveFloat(args[0]);
 
-                try instruction.toInt(tape, address);
-            },
-            convertInstrucion("FCAST") => {
-                const args = try unwrapArgs(&instr, 1);
-                const address = try resolveAddress(args[0]);
+                        switch (instr) {
+                            .SET => try instruction.setWord(tape, address, value),
+                            .SETF => try instruction.setFloat(tape, address, flt),
+                            .ADD => try instruction.addWord(tape, address, value),
+                            .SUB => try instruction.subtractWord(tape, address, value),
+                            .MUL => try instruction.multiplyWord(tape, address, value),
+                            .DIV => try instruction.divideWord(tape, address, value),
+                            .MOD => try instruction.modWord(tape, address, @bitCast(value)),
+                            else => unreachable,
+                        }
+                    }
+                },
+            }
+        } else if (instruction.Instruction.vArg(instr)) {
+            const args = try unwrapArgs(&line, 1);
+            print("\t<arg1: {s}>\n", .{args[0]});
+            const value = try resolveValue(args[0]);
+            const flt = try resolveFloat(args[0]);
 
-                try instruction.toFloat(tape, address);
-            },
-            else => continue,
+            switch (instr) {
+                .PUT => print("{any}\n", .{value}),
+                .PUTF => print("{d}\n", .{flt}),
+                .PUSH => try instruction.push(tape, value),
+                else => unreachable,
+            }
         }
     }
 }
