@@ -1,12 +1,21 @@
 const std = @import("std");
 const byteparser = @import("../parser/byteparser.zig");
+const IRparser = @import("../parser/IRparser.zig");
 const globals = @import("globals.zig");
 const float = globals.float;
 
 pub const Instruction = enum {
     // no args
+    /// initialise SP
+    INIT,
     /// allocate word on stack (increment SP by word size)
     RESRV,
+    /// call a function inside the current stack frame
+    CALLRAW,
+    /// tear down the current stack frame
+    RET,
+    /// exit program execution
+    EXIT,
 
     // <address>
     /// cast float to int
@@ -27,8 +36,6 @@ pub const Instruction = enum {
     // <address> <value>
     /// set word at address
     SET,
-    /// set float at address
-    SETF,
     /// add to word at address
     ADD,
     /// subtract from word at address
@@ -40,13 +47,21 @@ pub const Instruction = enum {
     /// word modulus division at adress
     MOD,
 
+    // <address> <float>
+    /// set float at address
+    SETF,
+
     // <value>
     /// print word to stderr
     PUT,
-    /// print float to console
-    PUTF,
     /// push word to stack (SET + RESRV)
     PUSH,
+    /// call a function and create a new stak frame for it, passing values in registers A-F as argumants, the first one being the return address of this function
+    CALL,
+
+    // <float>
+    /// print float to console
+    PUTF,
 
     pub fn fromString(instr_name: []const u8) ?Instruction {
         return std.meta.stringToEnum(Instruction, instr_name);
@@ -58,19 +73,27 @@ pub const Instruction = enum {
     }
 
     pub fn noArgs(instr: Instruction) bool {
-        return Instruction.inRange(instr, .RESRV, .RESRV);
+        return Instruction.inRange(instr, .RESRV, .EXIT);
     }
 
     pub fn aArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .CAST, .MOD);
+        return Instruction.inRange(instr, .CAST, .SETF);
     }
 
     pub fn avArg(instr: Instruction) bool {
         return Instruction.inRange(instr, .SET, .MOD);
     }
 
+    pub fn afArg(instr: Instruction) bool {
+        return Instruction.inRange(instr, .SETF, .SETF);
+    }
+
     pub fn vArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .PUT, .PUSH);
+        return Instruction.inRange(instr, .PUT, .CALL);
+    }
+
+    pub fn fArg(instr: Instruction) bool {
+        return Instruction.inRange(instr, .PUTF, .PUTF);
     }
 };
 
@@ -131,7 +154,8 @@ pub fn toFloat(tape: []u8, address: usize) AddressError!void {
 }
 
 pub fn initTape(tape: []u8) AddressError!void {
-    try setUnsigned(tape, globals.SP, globals.SP_value);
+    try setUnsigned(tape, globals.SP, globals.SP_init_value);
+    try setUnsigned(tape, globals.FP, globals.SP_init_value);
 }
 
 pub fn addWord(tape: []u8, address: usize, value: isize) AddressError!void {
@@ -175,7 +199,39 @@ pub fn reserve(tape: []u8) MemoryError!void {
 }
 
 pub fn push(tape: []u8, value: isize) MemoryError!void {
-    const sp_addr = wordUnsigned(tape, globals.SP) catch return MemoryError.NotEnoughMemory;
-    setWord(tape, sp_addr, value) catch return MemoryError.NotEnoughMemory;
+    const sp_point = wordUnsigned(tape, globals.SP) catch return MemoryError.NotEnoughMemory;
+    setWord(tape, sp_point, value) catch return MemoryError.NotEnoughMemory;
     try reserve(tape);
+}
+
+pub fn call(tape: []u8, arg_count: isize) MemoryError!void {
+    if (arg_count > globals.num_registers)
+        return MemoryError.NotEnoughMemory;
+
+    const fp_point = wordValue(tape, globals.FP) catch return MemoryError.NotEnoughMemory;
+
+    const sp_point = wordUnsigned(tape, globals.SP) catch return MemoryError.NotEnoughMemory;
+    setUnsigned(tape, globals.FP, sp_point) catch return MemoryError.NotEnoughMemory;
+
+    try push(tape, fp_point);
+
+    var reg_addr: usize = globals.A;
+    var i: usize = 0;
+
+    while (i < arg_count) : ({
+        i += 1;
+        reg_addr += @sizeOf(usize);
+    }) {
+        const reg_val = wordValue(tape, reg_addr) catch return MemoryError.NotEnoughMemory;
+        try push(tape, reg_val);
+    }
+}
+
+pub fn @"return"(tape: []u8) AddressError!void {
+    const fp_point = try wordUnsigned(tape, globals.FP);
+    try setUnsigned(tape, globals.SP, fp_point);
+
+    try incrementWSize(tape, globals.FP);
+    const fp_ret = try wordUnsigned(tape, globals.FP);
+    try setUnsigned(tape, globals.FP, fp_ret);
 }

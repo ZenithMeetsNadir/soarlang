@@ -17,6 +17,10 @@ const InstructionError = error{
     WrongNumberOfArguments,
 };
 
+const ExecutionInterruptionError = error{
+    ExecutionExited,
+};
+
 fn condDeref(arg: []const u8, store_is_deref: *bool) []const u8 {
     if (arg[0] == '[') {
         store_is_deref.* = true;
@@ -61,15 +65,7 @@ pub fn resolveFloat(float_str: []const u8) (ArgumentError || instruction.Address
     if (float_str.len == 0)
         return ArgumentError.CouldNotParse;
 
-    var deref_value = false;
-    const float_str_res = condDeref(float_str, &deref_value);
-
-    print("\t\tderef_value: {any}\n", .{deref_value});
-
-    if (deref_value)
-        return @bitCast(try resolveValue(float_str));
-
-    const flt: float = std.fmt.parseFloat(float, float_str_res) catch return ArgumentError.CouldNotParse;
+    const flt: float = std.fmt.parseFloat(float, float_str) catch @bitCast(try resolveValue(float_str));
 
     print("\t\tfloat: {d}\n", .{flt});
 
@@ -127,7 +123,7 @@ pub fn unwrapArgs(arg_iter: *IRparser.ArgumentIterator, comptime arg_count: usiz
 }
 
 pub fn interpret(instr_iter: *InstructionIterator) !void {
-    try instruction.initTape(tape);
+    var iter_origin = instr_iter.*;
 
     var instr_null = instr_iter.next();
     while (instr_null != null) : (instr_null = instr_iter.next()) {
@@ -139,7 +135,11 @@ pub fn interpret(instr_iter: *InstructionIterator) !void {
 
         if (instruction.Instruction.noArgs(instr)) {
             switch (instr) {
+                .INIT => try instruction.initTape(tape),
                 .RESRV => try instruction.reserve(tape),
+                .CALLRAW => {},
+                .RET => try instruction.@"return"(tape),
+                .EXIT => return ExecutionInterruptionError.ExecutionExited,
                 else => unreachable,
             }
         } else if (instruction.Instruction.aArg(instr)) {
@@ -158,19 +158,24 @@ pub fn interpret(instr_iter: *InstructionIterator) !void {
                     if (instruction.Instruction.avArg(instr)) {
                         args = try unwrapArgs(&line, 1);
                         print("\t<arg2: {s}>\n", .{args[0]});
-
-                        // TODO fix resolve only one way
                         const value = try resolveValue(args[0]);
-                        const flt = try resolveFloat(args[0]);
 
                         switch (instr) {
                             .SET => try instruction.setWord(tape, address, value),
-                            .SETF => try instruction.setFloat(tape, address, flt),
                             .ADD => try instruction.addWord(tape, address, value),
                             .SUB => try instruction.subtractWord(tape, address, value),
                             .MUL => try instruction.multiplyWord(tape, address, value),
                             .DIV => try instruction.divideWord(tape, address, value),
                             .MOD => try instruction.modWord(tape, address, @bitCast(value)),
+                            else => unreachable,
+                        }
+                    } else if (instruction.Instruction.afArg(instr)) {
+                        args = try unwrapArgs(&line, 1);
+                        print("\t<arg2: {s}>\n", .{args[0]});
+                        const flt = try resolveFloat(args[0]);
+
+                        switch (instr) {
+                            .SETF => try instruction.setFloat(tape, address, flt),
                             else => unreachable,
                         }
                     }
@@ -180,12 +185,23 @@ pub fn interpret(instr_iter: *InstructionIterator) !void {
             const args = try unwrapArgs(&line, 1);
             print("\t<arg1: {s}>\n", .{args[0]});
             const value = try resolveValue(args[0]);
-            const flt = try resolveFloat(args[0]);
 
             switch (instr) {
                 .PUT => print("{any}\n", .{value}),
-                .PUTF => print("{d}\n", .{flt}),
                 .PUSH => try instruction.push(tape, value),
+                .CALL => {
+                    try instruction.call(tape, value);
+                    try interpret(&iter_origin);
+                },
+                else => unreachable,
+            }
+        } else if (instruction.Instruction.fArg(instr)) {
+            const args = try unwrapArgs(&line, 1);
+            print("\t<arg1: {s}>\n", .{args[0]});
+            const flt = try resolveFloat(args[0]);
+
+            switch (instr) {
+                .PUTF => print("{d}\n", .{flt}),
                 else => unreachable,
             }
         }

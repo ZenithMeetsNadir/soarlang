@@ -13,6 +13,7 @@ pub const SP = 0;
 pub const FP = SP + @sizeOf(usize);
 
 // registers
+pub const num_registers = 6;
 pub const A = FP + @sizeOf(usize);
 pub const B = A + @sizeOf(usize);
 pub const C = B + @sizeOf(usize);
@@ -51,4 +52,4 @@ pub fn referenceGlobal(global: []const u8) GlobalError!usize {
 }
 
 // init stack pointer
-pub const SP_value = F + @sizeOf(usize);
+pub const SP_init_value = F + @sizeOf(usize);
