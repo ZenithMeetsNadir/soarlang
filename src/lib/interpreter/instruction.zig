@@ -73,7 +73,7 @@ pub const Instruction = enum {
     }
 
     pub fn noArgs(instr: Instruction) bool {
-        return Instruction.inRange(instr, .RESRV, .EXIT);
+        return Instruction.inRange(instr, .INIT, .EXIT);
     }
 
     pub fn aArg(instr: Instruction) bool {

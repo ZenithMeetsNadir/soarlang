@@ -4,10 +4,10 @@ const print = std.debug.print;
 const byteparser = @import("../parser/byteparser.zig");
 const IRparser = @import("../parser/IRparser.zig");
 const InstructionIterator = IRparser.InstructionIterator;
+const SourceObject = @import("SourceObject.zig");
 const instruction = @import("instruction.zig");
 const globals = @import("globals.zig");
 const float = globals.float;
-const tape = &@import("tape.zig").tape;
 
 const ArgumentError = error{
     CouldNotParse,
@@ -30,7 +30,7 @@ fn condDeref(arg: []const u8, store_is_deref: *bool) []const u8 {
     return arg;
 }
 
-pub fn resolveValue(val_str: []const u8) (ArgumentError || instruction.AddressError)!isize {
+pub fn resolveValue(tape: []const u8, val_str: []const u8) (ArgumentError || instruction.AddressError)!isize {
     if (val_str.len == 0)
         return ArgumentError.CouldNotParse;
 
@@ -61,18 +61,18 @@ pub fn resolveValue(val_str: []const u8) (ArgumentError || instruction.AddressEr
     return value;
 }
 
-pub fn resolveFloat(float_str: []const u8) (ArgumentError || instruction.AddressError)!float {
+pub fn resolveFloat(tape: []const u8, float_str: []const u8) (ArgumentError || instruction.AddressError)!float {
     if (float_str.len == 0)
         return ArgumentError.CouldNotParse;
 
-    const flt: float = std.fmt.parseFloat(float, float_str) catch @bitCast(try resolveValue(float_str));
+    const flt: float = std.fmt.parseFloat(float, float_str) catch @bitCast(try resolveValue(tape, float_str));
 
     print("\t\tfloat: {d}\n", .{flt});
 
     return flt;
 }
 
-pub fn resolveAddress(addr_str: []const u8) (ArgumentError || instruction.AddressError)!usize {
+pub fn resolveAddress(tape: []const u8, addr_str: []const u8) (ArgumentError || instruction.AddressError)!usize {
     if (addr_str.len == 0)
         return ArgumentError.CouldNotParse;
 
@@ -122,15 +122,21 @@ pub fn unwrapArgs(arg_iter: *IRparser.ArgumentIterator, comptime arg_count: usiz
     return args;
 }
 
-pub fn interpret(instr_iter: *InstructionIterator) !void {
-    var iter_origin = instr_iter.*;
+pub fn interpretSourceObj(source_obj: *SourceObject) !void {
+    try interpret(&source_obj.instr_iter, source_obj);
+}
 
-    var instr_null = instr_iter.next();
-    while (instr_null != null) : (instr_null = instr_iter.next()) {
-        var line = instr_null.?;
-        const instr_name = line.first();
+pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const SourceObject) !void {
+    const tape = source_obj_ref.tape;
 
-        const instr = instruction.Instruction.fromString(instr_name) orelse continue;
+    while (instr_iter.next()) |arg_iter| {
+        var arg_iter_mut = arg_iter;
+        const instr_name = arg_iter_mut.first() orelse continue;
+
+        const instr = instruction.Instruction.fromString(instr_name) orelse {
+            print("failed: {any}\n", .{instr_name});
+            continue;
+        };
         print("\n<instruction: {s}>\n", .{@tagName(instr)});
 
         if (instruction.Instruction.noArgs(instr)) {
@@ -143,9 +149,9 @@ pub fn interpret(instr_iter: *InstructionIterator) !void {
                 else => unreachable,
             }
         } else if (instruction.Instruction.aArg(instr)) {
-            var args = try unwrapArgs(&line, 1);
+            var args = try unwrapArgs(&arg_iter_mut, 1);
             print("\t<arg1: {s}>\n", .{args[0]});
-            const address = try resolveAddress(args[0]);
+            const address = try resolveAddress(tape, args[0]);
 
             switch (instr) {
                 .CAST => try instruction.toInt(tape, address),
@@ -156,9 +162,9 @@ pub fn interpret(instr_iter: *InstructionIterator) !void {
                 .DECWS => try instruction.decrementWSize(tape, address),
                 else => {
                     if (instruction.Instruction.avArg(instr)) {
-                        args = try unwrapArgs(&line, 1);
+                        args = try unwrapArgs(&arg_iter_mut, 1);
                         print("\t<arg2: {s}>\n", .{args[0]});
-                        const value = try resolveValue(args[0]);
+                        const value = try resolveValue(tape, args[0]);
 
                         switch (instr) {
                             .SET => try instruction.setWord(tape, address, value),
@@ -170,9 +176,9 @@ pub fn interpret(instr_iter: *InstructionIterator) !void {
                             else => unreachable,
                         }
                     } else if (instruction.Instruction.afArg(instr)) {
-                        args = try unwrapArgs(&line, 1);
+                        args = try unwrapArgs(&arg_iter_mut, 1);
                         print("\t<arg2: {s}>\n", .{args[0]});
-                        const flt = try resolveFloat(args[0]);
+                        const flt = try resolveFloat(tape, args[0]);
 
                         switch (instr) {
                             .SETF => try instruction.setFloat(tape, address, flt),
@@ -182,23 +188,30 @@ pub fn interpret(instr_iter: *InstructionIterator) !void {
                 },
             }
         } else if (instruction.Instruction.vArg(instr)) {
-            const args = try unwrapArgs(&line, 1);
+            var args = try unwrapArgs(&arg_iter_mut, 1);
             print("\t<arg1: {s}>\n", .{args[0]});
-            const value = try resolveValue(args[0]);
+            const value = try resolveValue(tape, args[0]);
 
             switch (instr) {
                 .PUT => print("{any}\n", .{value}),
                 .PUSH => try instruction.push(tape, value),
                 .CALL => {
                     try instruction.call(tape, value);
-                    try interpret(&iter_origin);
+
+                    args = try unwrapArgs(&arg_iter_mut, 1);
+                    const func_name = args[0];
+                    print("\t<arg2: {s}>\n", .{func_name});
+
+                    var func = try source_obj_ref.getFunc(func_name);
+                    print("\t\tcalling: {s}\n", .{func_name});
+                    try interpret(&func, source_obj_ref);
                 },
                 else => unreachable,
             }
         } else if (instruction.Instruction.fArg(instr)) {
-            const args = try unwrapArgs(&line, 1);
+            const args = try unwrapArgs(&arg_iter_mut, 1);
             print("\t<arg1: {s}>\n", .{args[0]});
-            const flt = try resolveFloat(args[0]);
+            const flt = try resolveFloat(tape, args[0]);
 
             switch (instr) {
                 .PUTF => print("{d}\n", .{flt}),
