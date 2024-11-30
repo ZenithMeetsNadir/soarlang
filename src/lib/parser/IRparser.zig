@@ -1,4 +1,5 @@
 const std = @import("std");
+const instruction = @import("../interpreter/instruction.zig");
 const SourceObject = @import("../interpreter/SourceObject.zig");
 const FunctionTable = SourceObject.FunctionTable;
 const FunctionTableError = SourceObject.FunctionTableError;
@@ -38,38 +39,54 @@ pub const ArgumentIterator = struct {
 pub const InstructionIterator = struct {
     line_iter: LineIterator,
     is_func: bool = false,
-    inside_func_body: bool = false,
+    func_body: bool = false,
+    code_block: bool = false,
 
     pub fn construct(line_iter: LineIterator) InstructionIterator {
         return InstructionIterator{ .line_iter = line_iter };
     }
 
     pub fn constructFuncBodyIterator(line_iter: LineIterator) InstructionIterator {
-        return InstructionIterator{ .line_iter = line_iter, .is_func = true, .inside_func_body = true };
+        return InstructionIterator{ .line_iter = line_iter, .is_func = true, .func_body = true };
+    }
+
+    pub fn continueCodeBlockIterator(self: *InstructionIterator) *InstructionIterator {
+        self.code_block = true;
+        return self;
+    }
+
+    pub fn continueInstructionIterator(self: *InstructionIterator) *InstructionIterator {
+        self.code_block = false;
+        return self;
     }
 
     pub fn next(self: *InstructionIterator) ?ArgumentIterator {
         return while (self.line_iter.next()) |instr| {
-            if (self.inside_func_body and !self.is_func)
+            if (self.func_body and !self.is_func)
                 break null;
 
             var instr_cpy = instr;
             const instr_name = instr_cpy.first() orelse continue;
 
+            if (self.code_block) {
+                if (std.mem.eql(u8, instr_name, @tagName(instruction.Instruction.END)))
+                    break null;
+            }
+
             if (!self.is_func) {
-                if (std.mem.eql(u8, instr_name, "FUNC")) {
+                if (std.mem.eql(u8, instr_name, "func")) {
                     self.is_func = true;
                     continue;
                 }
             } else {
-                if (std.mem.eql(u8, instr_name, "ENDFUNC")) {
-                    if (self.inside_func_body)
+                if (std.mem.eql(u8, instr_name, "endfunc")) {
+                    if (self.func_body)
                         break null;
 
                     self.is_func = false;
                 }
 
-                if (!self.inside_func_body)
+                if (!self.func_body)
                     continue;
             }
 
@@ -107,7 +124,7 @@ pub fn createFnTable(line_iter: *LineIterator, allocator: std.mem.Allocator) Fun
         var line_mut = line;
         const instr_name = line_mut.first() orelse continue;
 
-        if (std.mem.eql(u8, instr_name, "FUNC")) {
+        if (std.mem.eql(u8, instr_name, "func")) {
             const func_name = line_mut.next() orelse return FunctionTableError.UnnamedFunction;
 
             if (func_table.get(func_name) != null)

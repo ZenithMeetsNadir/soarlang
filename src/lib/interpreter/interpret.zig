@@ -122,6 +122,27 @@ pub fn unwrapArgs(arg_iter: *IRparser.ArgumentIterator, comptime arg_count: usiz
     return args;
 }
 
+pub fn breakCodeBlock(instr_iter: *InstructionIterator) void {
+    var open_blocks: usize = 0;
+
+    while (instr_iter.next()) |arg_iter| {
+        var arg_iter_mut = arg_iter;
+        const instr_name = arg_iter_mut.first() orelse continue;
+
+        const instr = instruction.Instruction.fromString(instr_name) orelse continue;
+
+        switch (instr) {
+            .IFEQL, .ELSE => open_blocks += 1,
+            .END => {
+                if (open_blocks > 0) {
+                    open_blocks -= 1;
+                } else break;
+            },
+            else => {},
+        }
+    }
+}
+
 pub fn interpretSourceObj(source_obj: *SourceObject) !void {
     try interpret(&source_obj.instr_iter, source_obj);
 }
@@ -132,18 +153,32 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
     while (instr_iter.next()) |arg_iter| {
         var arg_iter_mut = arg_iter;
         const instr_name = arg_iter_mut.first() orelse continue;
-
-        const instr = instruction.Instruction.fromString(instr_name) orelse {
-            print("failed: {any}\n", .{instr_name});
-            continue;
-        };
+        const instr = instruction.Instruction.fromString(instr_name) orelse continue;
         print("\n<instruction: {s}>\n", .{@tagName(instr)});
 
         if (instruction.Instruction.noArgs(instr)) {
             switch (instr) {
                 .INIT => try instruction.initTape(tape),
                 .RESRV => try instruction.reserve(tape),
-                .CALLRAW => {},
+                .ELSE => {
+                    try interpret(instr_iter.continueCodeBlockIterator(), source_obj_ref);
+                    _ = instr_iter.continueInstructionIterator();
+                },
+                .END => {},
+                .CALLRAW => {
+                    const args = try unwrapArgs(&arg_iter_mut, 1);
+                    const func_name = args[0];
+                    print("\t<arg1: {s}>\n", .{func_name});
+
+                    var func = try source_obj_ref.getFunc(func_name);
+                    print("\t\tcalling: {s}\n", .{func_name});
+                    try interpret(&func, source_obj_ref);
+                },
+                .BREAK => breakCodeBlock(instr_iter.continueInstructionIterator()),
+                .BREAKFN => {
+                    _ = instr_iter.continueInstructionIterator();
+                    break;
+                },
                 .RET => try instruction.@"return"(tape),
                 .EXIT => return ExecutionInterruptionError.ExecutionExited,
                 else => unreachable,
@@ -156,10 +191,13 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
             switch (instr) {
                 .CAST => try instruction.toInt(tape, address),
                 .CASTF => try instruction.toFloat(tape, address),
+                .BOOL => try instruction.toBool(tape, address),
+                .NOT => try instruction.negateWord(tape, address),
                 .INC => try instruction.incrementWord(tape, address),
                 .DEC => try instruction.decrementWord(tape, address),
                 .INCWS => try instruction.incrementWSize(tape, address),
                 .DECWS => try instruction.decrementWSize(tape, address),
+                .DEREF => try instruction.dereferenceWord(tape, address),
                 else => {
                     if (instruction.Instruction.avArg(instr)) {
                         args = try unwrapArgs(&arg_iter_mut, 1);
@@ -168,6 +206,8 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
 
                         switch (instr) {
                             .SET => try instruction.setWord(tape, address, value),
+                            .AND => try instruction.andWord(tape, address, value),
+                            .OR => try instruction.orWord(tape, address, value),
                             .ADD => try instruction.addWord(tape, address, value),
                             .SUB => try instruction.subtractWord(tape, address, value),
                             .MUL => try instruction.multiplyWord(tape, address, value),
@@ -206,7 +246,25 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                     print("\t\tcalling: {s}\n", .{func_name});
                     try interpret(&func, source_obj_ref);
                 },
-                else => unreachable,
+                else => {
+                    if (instruction.Instruction.vvArg(instr)) {
+                        args = try unwrapArgs(&arg_iter_mut, 1);
+                        print("\t<arg2: {s}>\n", .{args[0]});
+                        const value2 = try resolveValue(tape, args[0]);
+
+                        switch (instr) {
+                            .IFEQL => {
+                                if (value == value2) {
+                                    try interpret(instr_iter.continueCodeBlockIterator(), source_obj_ref);
+                                    _ = instr_iter.continueInstructionIterator();
+
+                                    breakCodeBlock(instr_iter);
+                                } else breakCodeBlock(instr_iter);
+                            },
+                            else => unreachable,
+                        }
+                    }
+                },
             }
         } else if (instruction.Instruction.fArg(instr)) {
             const args = try unwrapArgs(&arg_iter_mut, 1);

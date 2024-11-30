@@ -10,8 +10,16 @@ pub const Instruction = enum {
     INIT,
     /// allocate word on stack (increment SP by word size)
     RESRV,
+    /// else code block
+    ELSE,
+    /// end of code block
+    END,
     /// call a function inside the current stack frame
     CALLRAW,
+    /// break from a code block
+    BREAK,
+    /// break from a function
+    BREAKFN,
     /// tear down the current stack frame
     RET,
     /// exit program execution
@@ -22,6 +30,10 @@ pub const Instruction = enum {
     CAST,
     /// cast int to float
     CASTF,
+    /// convert word to boolean
+    BOOL,
+    /// bitwise negate word
+    NOT,
     /// increment word
     INC,
     /// decrementc word
@@ -30,12 +42,18 @@ pub const Instruction = enum {
     INCWS,
     /// decrement by word size
     DECWS,
+    /// dereference word
+    DEREF,
 
     // <address> <address>
 
     // <address> <value>
     /// set word at address
     SET,
+    /// bitwise and to word
+    AND,
+    /// bitwise or to word
+    OR,
     /// add to word at address
     ADD,
     /// subtract from word at address
@@ -56,8 +74,12 @@ pub const Instruction = enum {
     PUT,
     /// push word to stack (SET + RESRV)
     PUSH,
-    /// call a function and create a new stak frame for it, passing values in registers A-F as argumants, the first one being the return address of this function
+    /// call a function and create a new stack frame for it, passing values in registers A-F as arguments, the first one being the return address of this function
     CALL,
+
+    // <value> <value>
+    /// enter following code block if equal words, jump to else block otherwise
+    IFEQL,
 
     // <float>
     /// print float to console
@@ -89,7 +111,11 @@ pub const Instruction = enum {
     }
 
     pub fn vArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .PUT, .CALL);
+        return Instruction.inRange(instr, .PUT, .IFEQL);
+    }
+
+    pub fn vvArg(instr: Instruction) bool {
+        return Instruction.inRange(instr, .IFEQL, .IFEQL);
     }
 
     pub fn fArg(instr: Instruction) bool {
@@ -153,9 +179,25 @@ pub fn toFloat(tape: []u8, address: usize) AddressError!void {
     try setFloat(tape, address, @floatFromInt(try wordValue(tape, address)));
 }
 
+pub fn toBool(tape: []u8, address: usize) AddressError!void {
+    try setWord(tape, address, @intFromBool(try wordValue(tape, address) != 0));
+}
+
+pub fn negateWord(tape: []u8, address: usize) AddressError!void {
+    try setWord(tape, address, ~(try wordValue(tape, address)));
+}
+
 pub fn initTape(tape: []u8) AddressError!void {
     try setUnsigned(tape, globals.SP, globals.SP_init_value);
     try setUnsigned(tape, globals.FP, globals.SP_init_value);
+}
+
+pub fn andWord(tape: []u8, address: usize, value: isize) AddressError!void {
+    try setWord(tape, address, try wordValue(tape, address) & value);
+}
+
+pub fn orWord(tape: []u8, address: usize, value: isize) AddressError!void {
+    try setWord(tape, address, try wordValue(tape, address) | value);
 }
 
 pub fn addWord(tape: []u8, address: usize, value: isize) AddressError!void {
@@ -190,8 +232,13 @@ pub fn incrementWSize(tape: []u8, address: usize) AddressError!void {
     try addWord(tape, address, @sizeOf(usize));
 }
 
-pub fn decrementWSize(tape: []u8, address: usize) !void {
+pub fn decrementWSize(tape: []u8, address: usize) AddressError!void {
     try addWord(tape, address, -@sizeOf(usize));
+}
+
+pub fn dereferenceWord(tape: []u8, address: usize) AddressError!void {
+    const deref_addr = try wordUnsigned(tape, address);
+    try setWord(tape, address, try wordValue(tape, deref_addr));
 }
 
 pub fn reserve(tape: []u8) MemoryError!void {
@@ -231,7 +278,6 @@ pub fn @"return"(tape: []u8) AddressError!void {
     const fp_point = try wordUnsigned(tape, globals.FP);
     try setUnsigned(tape, globals.SP, fp_point);
 
-    try incrementWSize(tape, globals.FP);
-    const fp_ret = try wordUnsigned(tape, globals.FP);
+    const fp_ret = try wordUnsigned(tape, fp_point);
     try setUnsigned(tape, globals.FP, fp_ret);
 }

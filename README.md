@@ -22,7 +22,7 @@ What are you asking about?
 
 The purpose or the name? 
 
-Its purpose is pretty clear, let me explain. I am too lazy to learn how to compose music in those fancy UI domains, so why not design my own? At least I can improve my programming skills, hopefully... 
+Its purpose is pretty clear, let me explain. I am too lazy to learn how to compose music in those fancy GUI domains, so why not design my own? At least I can improve my programming skills, hopefully... 
 
 You would like to inquire about the name, then. Put simply, I like the word 'soar'. I intended to use 'ascend' to relate to music a bit more (as in ascending melody), however, I decided 'soar' is better. And I made it stand for "Shenanigan Outlasting Audio Representation". 
 
