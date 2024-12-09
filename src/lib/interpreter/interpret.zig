@@ -13,21 +13,35 @@ const ArgumentError = error{
     CouldNotParse,
 };
 
+const OffsetError = error{
+    NoOffset,
+};
+
 const InstructionError = error{
     WrongNumberOfArguments,
 };
 
 const ExecutionInterruptionError = error{
-    ExecutionExited,
+    ExecutionAborted,
 };
 
 fn condDeref(arg: []const u8, store_is_deref: *bool) []const u8 {
     if (arg[0] == '[') {
         store_is_deref.* = true;
-        return arg[1 .. arg.len - 1];
+
+        var arg_iter = std.mem.splitScalar(u8, arg[1..], ']');
+        return arg_iter.first();
     }
 
     return arg;
+}
+
+fn constOffset(str: []const u8) OffsetError!isize {
+    var offset_iter = std.mem.splitScalar(u8, str, ']');
+
+    _ = offset_iter.first();
+    const offset_str = offset_iter.next() orelse return OffsetError.NoOffset;
+    return std.fmt.parseInt(isize, offset_str, 0) catch return OffsetError.NoOffset;
 }
 
 pub fn resolveValue(tape: []const u8, val_str: []const u8) (ArgumentError || instruction.AddressError)!isize {
@@ -52,6 +66,10 @@ pub fn resolveValue(tape: []const u8, val_str: []const u8) (ArgumentError || ins
     };
 
     print("\t\tvalue: {d}\n", .{value});
+
+    value += constOffset(val_str) catch 0;
+
+    print("\t\tvalue after offset reslolution: {d}\n", .{value});
 
     if (deref_value) {
         value = try instruction.wordValue(tape, @bitCast(value));
@@ -94,6 +112,10 @@ pub fn resolveAddress(tape: []const u8, addr_str: []const u8) (ArgumentError || 
     };
 
     print("\t\taddress: {d}\n", .{address});
+
+    address += @bitCast(constOffset(addr_str) catch 0);
+
+    print("\t\taddress after offset resolution: {d}\n", .{address});
 
     if (deref) {
         address = try instruction.wordUnsigned(tape, address);
@@ -180,7 +202,7 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                     break;
                 },
                 .RET => try instruction.@"return"(tape),
-                .EXIT => return ExecutionInterruptionError.ExecutionExited,
+                .EXIT => return ExecutionInterruptionError.ExecutionAborted,
                 else => unreachable,
             }
         } else if (instruction.Instruction.aArg(instr)) {
