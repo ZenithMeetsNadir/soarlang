@@ -14,10 +14,10 @@ pub const Instruction = enum {
     ELSE,
     /// end of code block
     END,
-    /// call a function inside the current stack frame
-    CALLRAW,
     /// break from a code block
     BREAK,
+    /// call a function inside the current stack frame
+    CALLRAW,
     /// break from a function
     BREAKFN,
     /// tear down the current stack frame
@@ -26,6 +26,8 @@ pub const Instruction = enum {
     EXIT,
 
     // <address>
+    /// allocate word on stack and store its address
+    STALLOC,
     /// cast float to int
     CAST,
     /// cast int to float
@@ -74,6 +76,10 @@ pub const Instruction = enum {
     PUT,
     /// push word to stack (SET + RESRV)
     PUSH,
+    /// enter following code block if true, jump to else block otherwise
+    IF,
+    /// loop following code block until false
+    WHILE,
     /// call a function and create a new stack frame for it, passing values in registers A-F as arguments, the first one being the return address of this function
     CALL,
 
@@ -99,7 +105,7 @@ pub const Instruction = enum {
     }
 
     pub fn aArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .CAST, .SETF);
+        return Instruction.inRange(instr, .STALLOC, .SETF);
     }
 
     pub fn avArg(instr: Instruction) bool {
@@ -243,6 +249,11 @@ pub fn dereferenceWord(tape: []u8, address: usize) AddressError!void {
 
 pub fn reserve(tape: []u8) MemoryError!void {
     incrementWSize(tape, globals.SP) catch return MemoryError.NotEnoughMemory;
+}
+
+pub fn stackAlloc(tape: []u8, address: usize) MemoryError!void {
+    setUnsigned(tape, address, globals.SP) catch return MemoryError.NotEnoughMemory;
+    try reserve(tape);
 }
 
 pub fn push(tape: []u8, value: isize) MemoryError!void {

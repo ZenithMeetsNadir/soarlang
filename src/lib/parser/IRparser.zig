@@ -23,16 +23,18 @@ pub const ArgumentIterator = struct {
     }
 
     pub fn peek(self: ArgumentIterator) ?[]const u8 {
-        var line_iter = self.line_iter;
-        return while (line_iter.next()) |word| {
-            if (isValid(word))
-                break word;
-        } else null;
+        var self_cpy = self;
+        return self_cpy.next();
     }
 
     pub fn first(self: *ArgumentIterator) ?[]const u8 {
         self.line_iter.index = 0;
         return self.next();
+    }
+
+    pub fn peekInstrName(self: ArgumentIterator) ?[]const u8 {
+        var self_cpy = self;
+        return self_cpy.first();
     }
 };
 
@@ -65,8 +67,7 @@ pub const InstructionIterator = struct {
             if (self.func_body and !self.is_func)
                 break null;
 
-            var instr_cpy = instr;
-            const instr_name = instr_cpy.first() orelse continue;
+            const instr_name = instr.peekInstrName() orelse continue;
 
             if (self.code_block) {
                 if (std.mem.eql(u8, instr_name, @tagName(instruction.Instruction.END)))
@@ -92,6 +93,11 @@ pub const InstructionIterator = struct {
 
             break instr;
         } else null;
+    }
+
+    pub fn peek(self: InstructionIterator) ?ArgumentIterator {
+        var self_cpy = self;
+        return self_cpy.next();
     }
 };
 

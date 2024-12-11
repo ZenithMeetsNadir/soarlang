@@ -5,7 +5,10 @@ const byteparser = @import("../parser/byteparser.zig");
 const IRparser = @import("../parser/IRparser.zig");
 const InstructionIterator = IRparser.InstructionIterator;
 const SourceObject = @import("SourceObject.zig");
+const FunctionGetError = SourceObject.FunctionGetError;
 const instruction = @import("instruction.zig");
+const AddressError = instruction.AddressError;
+const MemoryError = instruction.MemoryError;
 const globals = @import("globals.zig");
 const float = globals.float;
 
@@ -24,6 +27,8 @@ const InstructionError = error{
 const ExecutionInterruptionError = error{
     ExecutionAborted,
 };
+
+const InterpretError = AddressError || MemoryError || ExecutionInterruptionError || InstructionError || ArgumentError || FunctionGetError;
 
 fn condDeref(arg: []const u8, store_is_deref: *bool) []const u8 {
     if (arg[0] == '[') {
@@ -113,14 +118,14 @@ pub fn resolveAddress(tape: []const u8, addr_str: []const u8) (ArgumentError || 
 
     print("\t\taddress: {d}\n", .{address});
 
-    address += @bitCast(constOffset(addr_str) catch 0);
-
-    print("\t\taddress after offset resolution: {d}\n", .{address});
-
     if (deref) {
         address = try instruction.wordUnsigned(tape, address);
         print("\t\taddress after dereference: {d}\n", .{address});
     }
+
+    address +%= @bitCast(constOffset(addr_str) catch 0);
+
+    print("\t\taddress after offset resolution: {d}\n", .{address});
 
     return address;
 }
@@ -165,11 +170,30 @@ pub fn breakCodeBlock(instr_iter: *InstructionIterator) void {
     }
 }
 
-pub fn interpretSourceObj(source_obj: *SourceObject) !void {
+pub fn interpretCodeBlock(instr_iter: *InstructionIterator, source_obj_ref: *const SourceObject) InterpretError!void {
+    const code_block_iter = instr_iter.code_block;
+
+    try interpret(instr_iter.continueCodeBlockIterator(), source_obj_ref);
+
+    if (!code_block_iter)
+        _ = instr_iter.continueInstructionIterator();
+}
+
+pub fn interpretIf(condition: bool, instr_iter: *InstructionIterator, source_obj_ref: *const SourceObject) InterpretError!void {
+    if (condition) {
+        try interpretCodeBlock(instr_iter, source_obj_ref);
+
+        const arg_iter = instr_iter.peek() orelse return;
+        if (std.mem.eql(u8, arg_iter.peekInstrName() orelse return, @tagName(instruction.Instruction.ELSE)))
+            breakCodeBlock(instr_iter);
+    } else breakCodeBlock(instr_iter);
+}
+
+pub fn interpretSourceObj(source_obj: *SourceObject) InterpretError!void {
     try interpret(&source_obj.instr_iter, source_obj);
 }
 
-pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const SourceObject) !void {
+pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const SourceObject) InterpretError!void {
     const tape = source_obj_ref.tape;
 
     while (instr_iter.next()) |arg_iter| {
@@ -182,10 +206,7 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
             switch (instr) {
                 .INIT => try instruction.initTape(tape),
                 .RESRV => try instruction.reserve(tape),
-                .ELSE => {
-                    try interpret(instr_iter.continueCodeBlockIterator(), source_obj_ref);
-                    _ = instr_iter.continueInstructionIterator();
-                },
+                .ELSE => try interpretCodeBlock(instr_iter, source_obj_ref),
                 .END => {},
                 .CALLRAW => {
                     const args = try unwrapArgs(&arg_iter_mut, 1);
@@ -197,6 +218,8 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                     try interpret(&func, source_obj_ref);
                 },
                 .BREAK => breakCodeBlock(instr_iter.continueInstructionIterator()),
+                // I actually hace no idea if BREAKFN is working, might test it as soon as I need its functionality.
+                // Of What I can recall, it had issues when used inside a code block.
                 .BREAKFN => {
                     _ = instr_iter.continueInstructionIterator();
                     break;
@@ -211,6 +234,7 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
             const address = try resolveAddress(tape, args[0]);
 
             switch (instr) {
+                .STALLOC => try instruction.stackAlloc(tape, address),
                 .CAST => try instruction.toInt(tape, address),
                 .CASTF => try instruction.toFloat(tape, address),
                 .BOOL => try instruction.toBool(tape, address),
@@ -252,11 +276,22 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
         } else if (instruction.Instruction.vArg(instr)) {
             var args = try unwrapArgs(&arg_iter_mut, 1);
             print("\t<arg1: {s}>\n", .{args[0]});
-            const value = try resolveValue(tape, args[0]);
+            var value = try resolveValue(tape, args[0]);
 
             switch (instr) {
                 .PUT => print("{any}\n", .{value}),
                 .PUSH => try instruction.push(tape, value),
+                .IF => try interpretIf(value != 0, instr_iter, source_obj_ref),
+                .WHILE => {
+                    while (value != 0) : (value = try resolveValue(tape, args[0])) {
+                        var code_block_start = instr_iter.*;
+                        try interpretCodeBlock(&code_block_start, source_obj_ref);
+                        print("\n<while loop condition>\n", .{});
+                        print("\t<arg1: {s}>\n", .{args[0]});
+                    }
+
+                    breakCodeBlock(instr_iter);
+                },
                 .CALL => {
                     try instruction.call(tape, value);
 
@@ -275,14 +310,7 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                         const value2 = try resolveValue(tape, args[0]);
 
                         switch (instr) {
-                            .IFEQL => {
-                                if (value == value2) {
-                                    try interpret(instr_iter.continueCodeBlockIterator(), source_obj_ref);
-                                    _ = instr_iter.continueInstructionIterator();
-
-                                    breakCodeBlock(instr_iter);
-                                } else breakCodeBlock(instr_iter);
-                            },
+                            .IFEQL => try interpretIf(value == value2, instr_iter, source_obj_ref),
                             else => unreachable,
                         }
                     }
