@@ -26,6 +26,7 @@ const InstructionError = error{
 
 const ExecutionInterruptionError = error{
     ExecutionAborted,
+    FunctionReturned,
 };
 
 const InterpretError = AddressError || MemoryError || ExecutionInterruptionError || InstructionError || ArgumentError || FunctionGetError;
@@ -189,6 +190,13 @@ pub fn interpretIf(condition: bool, instr_iter: *InstructionIterator, source_obj
     } else breakCodeBlock(instr_iter);
 }
 
+pub fn callFunc(func_instr_iter: *InstructionIterator, source_obj_ref: *const SourceObject) InterpretError!void {
+    interpret(func_instr_iter, source_obj_ref) catch |err| switch (err) {
+        ExecutionInterruptionError.FunctionReturned => {},
+        else => return err,
+    };
+}
+
 pub fn interpretSourceObj(source_obj: *SourceObject) InterpretError!void {
     try interpret(&source_obj.instr_iter, source_obj);
 }
@@ -215,15 +223,12 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
 
                     var func = try source_obj_ref.getFunc(func_name);
                     print("\t\tcalling: {s}\n", .{func_name});
-                    try interpret(&func, source_obj_ref);
+                    try callFunc(&func, source_obj_ref);
                 },
                 .BREAK => breakCodeBlock(instr_iter.continueInstructionIterator()),
                 // I actually hace no idea if BREAKFN is working, might test it as soon as I need its functionality.
                 // Of What I can recall, it had issues when used inside a code block.
-                .BREAKFN => {
-                    _ = instr_iter.continueInstructionIterator();
-                    break;
-                },
+                .BREAKFN => return ExecutionInterruptionError.FunctionReturned,
                 .RET => try instruction.@"return"(tape),
                 .EXIT => return ExecutionInterruptionError.ExecutionAborted,
                 else => unreachable,
@@ -301,7 +306,7 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
 
                     var func = try source_obj_ref.getFunc(func_name);
                     print("\t\tcalling: {s}\n", .{func_name});
-                    try interpret(&func, source_obj_ref);
+                    try callFunc(&func, source_obj_ref);
                 },
                 else => {
                     if (instruction.Instruction.vvArg(instr)) {
