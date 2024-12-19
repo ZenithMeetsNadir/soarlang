@@ -7,6 +7,7 @@ SET B 4
 CALL 2 @_factorial
 
 PUT [F]
+TESTEQL [F] 24
 
 func @_factorial
     SET A FP

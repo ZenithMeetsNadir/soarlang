@@ -67,6 +67,14 @@ pub const Instruction = enum {
     /// word modulus division at adress
     MOD,
 
+    // <address> <value> <value>
+    /// determine whether words are equal
+    EQL,
+    /// determine whether word1 is smaller than word2
+    SMLR,
+    /// determine whether word1 is greater than word2
+    GRTR,
+
     // <address> <float>
     /// set float at address
     SETF,
@@ -86,6 +94,8 @@ pub const Instruction = enum {
     // <value> <value>
     /// enter following code block if equal words, jump to else block otherwise
     IFEQL,
+    /// for testing purposes
+    TESTEQL,
 
     // <float>
     /// print float to console
@@ -117,15 +127,22 @@ pub const Instruction = enum {
     }
 
     pub fn vArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .PUT, .IFEQL);
+        return Instruction.inRange(instr, .PUT, .TESTEQL);
     }
 
     pub fn vvArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .IFEQL, .IFEQL);
+        return Instruction.inRange(instr, .IFEQL, .TESTEQL);
     }
 
     pub fn fArg(instr: Instruction) bool {
         return Instruction.inRange(instr, .PUTF, .PUTF);
+    }
+
+    pub fn beginsCodeBlock(instr: Instruction) bool {
+        return switch (instr) {
+            .IF, .IFEQL, .ELSE, .WHILE => true,
+            else => false,
+        };
     }
 };
 
@@ -240,6 +257,18 @@ pub fn incrementWSize(tape: []u8, address: usize) AddressError!void {
 
 pub fn decrementWSize(tape: []u8, address: usize) AddressError!void {
     try addWord(tape, address, -@sizeOf(usize));
+}
+
+pub fn equal(tape: []u8, address: usize, value1: isize, value2: isize) AddressError!void {
+    try setWord(tape, address, @intFromBool(value1 == value2));
+}
+
+pub fn smaller(tape: []u8, address: usize, value1: isize, value2: isize) AddressError!void {
+    try setWord(tape, address, @intFromBool(value1 < value2));
+}
+
+pub fn greater(tape: []u8, address: usize, value1: isize, value2: isize) AddressError!void {
+    try setWord(tape, address, @intFromBool(value1 > value2));
 }
 
 pub fn dereferenceWord(tape: []u8, address: usize) AddressError!void {

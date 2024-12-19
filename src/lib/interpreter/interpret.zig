@@ -50,85 +50,81 @@ fn constOffset(str: []const u8) OffsetError!isize {
     return std.fmt.parseInt(isize, offset_str, 0) catch return OffsetError.NoOffset;
 }
 
-pub fn resolveValue(tape: []const u8, val_str: []const u8) (ArgumentError || instruction.AddressError)!isize {
-    if (val_str.len == 0)
-        return ArgumentError.CouldNotParse;
+fn unembrace(str: []const u8) []const u8 {
+    return str[1 .. str.len - 1];
+}
 
-    var deref_value: bool = false;
-    const val_str_res = condDeref(val_str, &deref_value);
+fn resolve(tape: []const u8, str: []const u8, is_value_resolution: bool) (ArgumentError || instruction.AddressError)!isize {
+    var value: isize = undefined;
 
-    print("\t\tderef_value: {any}\n", .{deref_value});
-
-    var value: isize = std.fmt.parseInt(isize, val_str_res, 0) catch |err| blk: {
-        break :blk switch (err) {
-            std.fmt.ParseIntError.Overflow => return ArgumentError.CouldNotParse,
-            std.fmt.ParseIntError.InvalidCharacter => inv_char: {
-                print("\t\treferencing global: {s}\n", .{val_str_res});
-                const global_addr = globals.referenceGlobal(val_str_res) catch return ArgumentError.CouldNotParse;
-                print("\t\treferenced global - address: {d}\n", .{global_addr});
-                break :inv_char try instruction.wordValue(tape, global_addr);
-            },
-        };
-    };
-
-    print("\t\tvalue: {d}\n", .{value});
-
-    value += constOffset(val_str) catch 0;
-
-    print("\t\tvalue after offset reslolution: {d}\n", .{value});
-
-    if (deref_value) {
+    if (str[0] == '[' and str[str.len - 1] == ']') {
+        value = try resolve(tape, unembrace(str), is_value_resolution);
+        print("\t\tvalue before dereference: {d}\n", .{value});
         value = try instruction.wordValue(tape, @bitCast(value));
         print("\t\tvalue after dereference: {d}\n", .{value});
+    } else {
+        var no_offset = std.mem.splitAny(u8, str, "+-");
+
+        const no_offset_str = no_offset.first();
+        const offset_str = no_offset.next();
+
+        if (offset_str == null and no_offset_str[0] != '[') {
+            if (is_value_resolution) {
+                value = std.fmt.parseInt(isize, no_offset_str, 0) catch |err| blk: {
+                    break :blk switch (err) {
+                        std.fmt.ParseIntError.Overflow => return ArgumentError.CouldNotParse,
+                        std.fmt.ParseIntError.InvalidCharacter => inv_char: {
+                            print("\t\treferencing global: {s}\n", .{no_offset_str});
+                            const global_addr = globals.referenceGlobal(no_offset_str) catch return ArgumentError.CouldNotParse;
+                            print("\t\treferenced global - address: {d}\n", .{global_addr});
+                            break :inv_char try instruction.wordValue(tape, global_addr);
+                        },
+                    };
+                };
+            } else {
+                value = @bitCast(std.fmt.parseUnsigned(usize, no_offset_str, 0) catch |err| blk: {
+                    break :blk switch (err) {
+                        std.fmt.ParseIntError.Overflow => return ArgumentError.CouldNotParse,
+                        std.fmt.ParseIntError.InvalidCharacter => inv_char: {
+                            print("\t\treferencing global: {s}\n", .{no_offset_str});
+                            const global_addr = globals.referenceGlobal(no_offset_str) catch return ArgumentError.CouldNotParse;
+                            print("\t\treferenced global - address: {d}\n", .{global_addr});
+                            break :inv_char global_addr;
+                        },
+                    };
+                });
+            }
+        } else {
+            value = try resolve(tape, no_offset_str, is_value_resolution);
+            print("\t\tvalue: {d}\n", .{value});
+
+            if (offset_str != null) {
+                value += std.fmt.parseInt(isize, str[no_offset_str.len..], 0) catch 0;
+                print("\t\tvalue shifted by offset: {d}\n", .{value});
+            }
+        }
     }
 
+    print("\t\tresolved value: {d}\n", .{value});
     return value;
+}
+
+pub fn resolveValue(tape: []const u8, val_str: []const u8) (ArgumentError || instruction.AddressError)!isize {
+    return try resolve(tape, val_str, true);
+}
+pub fn resolveAddress(tape: []const u8, addr_str: []const u8) (ArgumentError || instruction.AddressError)!usize {
+    return @bitCast(try resolve(tape, addr_str, false));
 }
 
 pub fn resolveFloat(tape: []const u8, float_str: []const u8) (ArgumentError || instruction.AddressError)!float {
     if (float_str.len == 0)
         return ArgumentError.CouldNotParse;
 
-    const flt: float = std.fmt.parseFloat(float, float_str) catch @bitCast(try resolveValue(tape, float_str));
+    const flt: float = std.fmt.parseFloat(float, float_str) catch @bitCast(try resolve(tape, float_str, true));
 
     print("\t\tfloat: {d}\n", .{flt});
 
     return flt;
-}
-
-pub fn resolveAddress(tape: []const u8, addr_str: []const u8) (ArgumentError || instruction.AddressError)!usize {
-    if (addr_str.len == 0)
-        return ArgumentError.CouldNotParse;
-
-    var deref: bool = false;
-    const addr_str_res = condDeref(addr_str, &deref);
-
-    print("\t\tderef: {any}\n", .{deref});
-
-    var address: usize = std.fmt.parseUnsigned(usize, addr_str_res, 0) catch |err| blk: {
-        break :blk switch (err) {
-            std.fmt.ParseIntError.Overflow => return ArgumentError.CouldNotParse,
-            std.fmt.ParseIntError.InvalidCharacter => inv_char: {
-                print("\t\treferencing global: {s}\n", .{addr_str_res});
-                const global_addr = globals.referenceGlobal(addr_str_res) catch return ArgumentError.CouldNotParse;
-                print("\t\treferenced global - address: {d}\n", .{global_addr});
-                break :inv_char global_addr;
-            },
-        };
-    };
-
-    print("\t\taddress: {d}\n", .{address});
-
-    if (deref) {
-        address = try instruction.wordUnsigned(tape, address);
-        print("\t\taddress after dereference: {d}\n", .{address});
-    }
-
-    address +%= @bitCast(constOffset(addr_str) catch 0);
-
-    print("\t\taddress after offset resolution: {d}\n", .{address});
-
-    return address;
 }
 
 pub fn unwrapArgs(arg_iter: *IRparser.ArgumentIterator, comptime arg_count: usize) InstructionError![arg_count][]const u8 {
@@ -159,14 +155,12 @@ pub fn breakCodeBlock(instr_iter: *InstructionIterator) void {
 
         const instr = instruction.Instruction.fromString(instr_name) orelse continue;
 
-        switch (instr) {
-            .IFEQL, .ELSE => open_blocks += 1,
-            .END => {
-                if (open_blocks > 0) {
-                    open_blocks -= 1;
-                } else break;
-            },
-            else => {},
+        if (instruction.Instruction.beginsCodeBlock(instr)) {
+            open_blocks += 1;
+        } else if (instr == .END) {
+            if (open_blocks > 0) {
+                open_blocks -= 1;
+            } else break;
         }
     }
 }
@@ -226,8 +220,6 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                     try callFunc(&func, source_obj_ref);
                 },
                 .BREAK => breakCodeBlock(instr_iter.continueInstructionIterator()),
-                // I actually hace no idea if BREAKFN is working, might test it as soon as I need its functionality.
-                // Of What I can recall, it had issues when used inside a code block.
                 .BREAKFN => return ExecutionInterruptionError.FunctionReturned,
                 .RET => try instruction.@"return"(tape),
                 .EXIT => return ExecutionInterruptionError.ExecutionAborted,
@@ -264,7 +256,9 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                             .MUL => try instruction.multiplyWord(tape, address, value),
                             .DIV => try instruction.divideWord(tape, address, value),
                             .MOD => try instruction.modWord(tape, address, @bitCast(value)),
-                            else => unreachable,
+                            else => {
+                                // equality operators
+                            },
                         }
                     } else if (instruction.Instruction.afArg(instr)) {
                         args = try unwrapArgs(&arg_iter_mut, 1);
@@ -316,6 +310,10 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
 
                         switch (instr) {
                             .IFEQL => try interpretIf(value == value2, instr_iter, source_obj_ref),
+                            .TESTEQL => {
+                                if (source_obj_ref.debug_enabled)
+                                    std.debug.assert(value == value2);
+                            },
                             else => unreachable,
                         }
                     }
