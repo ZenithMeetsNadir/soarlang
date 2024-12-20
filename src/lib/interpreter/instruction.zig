@@ -14,8 +14,12 @@ pub const Instruction = enum {
     ELSE,
     /// end of code block
     END,
+    /// end of a while loop
+    ENDWHILE,
     /// break from a code block
     BREAK,
+    /// break from a while loop
+    BREAKWH,
     /// call a function inside the current stack frame
     CALLRAW,
     /// break from a function
@@ -119,7 +123,11 @@ pub const Instruction = enum {
     }
 
     pub fn avArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .SET, .MOD);
+        return Instruction.inRange(instr, .SET, .GRTR);
+    }
+
+    pub fn avvArg(instr: Instruction) bool {
+        return Instruction.inRange(instr, .EQL, .GRTR);
     }
 
     pub fn afArg(instr: Instruction) bool {

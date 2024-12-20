@@ -63,15 +63,19 @@ pub const InstructionIterator = struct {
     }
 
     pub fn next(self: *InstructionIterator) ?ArgumentIterator {
-        return while (self.line_iter.next()) |instr| {
+        return while (self.line_iter.next()) |arg_iter| {
             if (self.func_body and !self.is_func)
                 break null;
 
-            const instr_name = instr.peekInstrName() orelse continue;
+            const instr_name = arg_iter.peekInstrName() orelse continue;
 
             if (self.code_block) {
-                if (std.mem.eql(u8, instr_name, @tagName(instruction.Instruction.END)))
-                    break null;
+                if (instruction.Instruction.fromString(instr_name)) |instr| {
+                    switch (instr) {
+                        .END, .ENDWHILE => break null,
+                        else => {},
+                    }
+                }
             }
 
             if (!self.is_func) {
@@ -91,7 +95,7 @@ pub const InstructionIterator = struct {
                     continue;
             }
 
-            break instr;
+            break arg_iter;
         } else null;
     }
 

@@ -27,6 +27,7 @@ const InstructionError = error{
 const ExecutionInterruptionError = error{
     ExecutionAborted,
     FunctionReturned,
+    BreakWhileLoop,
 };
 
 const InterpretError = AddressError || MemoryError || ExecutionInterruptionError || InstructionError || ArgumentError || FunctionGetError;
@@ -147,6 +148,9 @@ pub fn unwrapArgs(arg_iter: *IRparser.ArgumentIterator, comptime arg_count: usiz
 }
 
 pub fn breakCodeBlock(instr_iter: *InstructionIterator) void {
+    const code_block_iter = instr_iter.code_block;
+    _ = instr_iter.continueInstructionIterator();
+
     var open_blocks: usize = 0;
 
     while (instr_iter.next()) |arg_iter| {
@@ -163,6 +167,9 @@ pub fn breakCodeBlock(instr_iter: *InstructionIterator) void {
             } else break;
         }
     }
+
+    if (code_block_iter)
+        _ = instr_iter.continueCodeBlockIterator();
 }
 
 pub fn interpretCodeBlock(instr_iter: *InstructionIterator, source_obj_ref: *const SourceObject) InterpretError!void {
@@ -209,7 +216,7 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                 .INIT => try instruction.initTape(tape),
                 .RESRV => try instruction.reserve(tape),
                 .ELSE => try interpretCodeBlock(instr_iter, source_obj_ref),
-                .END => {},
+                .END, .ENDWHILE => {},
                 .CALLRAW => {
                     const args = try unwrapArgs(&arg_iter_mut, 1);
                     const func_name = args[0];
@@ -219,7 +226,8 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                     print("\t\tcalling: {s}\n", .{func_name});
                     try callFunc(&func, source_obj_ref);
                 },
-                .BREAK => breakCodeBlock(instr_iter.continueInstructionIterator()),
+                .BREAK => breakCodeBlock(instr_iter),
+                .BREAKWH => return ExecutionInterruptionError.BreakWhileLoop,
                 .BREAKFN => return ExecutionInterruptionError.FunctionReturned,
                 .RET => try instruction.@"return"(tape),
                 .EXIT => return ExecutionInterruptionError.ExecutionAborted,
@@ -257,7 +265,18 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                             .DIV => try instruction.divideWord(tape, address, value),
                             .MOD => try instruction.modWord(tape, address, @bitCast(value)),
                             else => {
-                                // equality operators
+                                if (instruction.Instruction.avvArg(instr)) {
+                                    args = try unwrapArgs(&arg_iter_mut, 1);
+                                    print("\t<arg3: {s}>\n", .{args[0]});
+                                    const value2 = try resolveValue(tape, args[0]);
+
+                                    switch (instr) {
+                                        .EQL => try instruction.equal(tape, address, value, value2),
+                                        .SMLR => try instruction.equal(tape, address, value, value2),
+                                        .GRTR => try instruction.equal(tape, address, value, value2),
+                                        else => unreachable,
+                                    }
+                                }
                             },
                         }
                     } else if (instruction.Instruction.afArg(instr)) {
@@ -284,7 +303,11 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                 .WHILE => {
                     while (value != 0) : (value = try resolveValue(tape, args[0])) {
                         var code_block_start = instr_iter.*;
-                        try interpretCodeBlock(&code_block_start, source_obj_ref);
+                        interpretCodeBlock(&code_block_start, source_obj_ref) catch |err| switch (err) {
+                            ExecutionInterruptionError.BreakWhileLoop => break,
+                            else => {},
+                        };
+
                         print("\n<while loop condition>\n", .{});
                         print("\t<arg1: {s}>\n", .{args[0]});
                     }
@@ -311,8 +334,10 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                         switch (instr) {
                             .IFEQL => try interpretIf(value == value2, instr_iter, source_obj_ref),
                             .TESTEQL => {
-                                if (source_obj_ref.debug_enabled)
+                                if (source_obj_ref.debug_enabled) {
                                     std.debug.assert(value == value2);
+                                    print("testeql instruction check passed\n\n", .{});
+                                }
                             },
                             else => unreachable,
                         }
