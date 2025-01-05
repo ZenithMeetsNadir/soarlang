@@ -21,7 +21,7 @@ fn help() []const u8 {
     var lines: [commandlist.command_list.len][]const u8 = undefined;
 
     for (commandlist.command_list, 0..) |command, index| {
-        const line = std.fmt.allocPrint(allocator, "\t{s}\t\t{s}\n", .{ command.name, command.description orelse "" }) catch return "";
+        const line = std.fmt.allocPrint(allocator, "\t{s}\t\t{s}\n\r", .{ command.name, command.description orelse "" }) catch return "";
 
         lines[index] = line;
     }

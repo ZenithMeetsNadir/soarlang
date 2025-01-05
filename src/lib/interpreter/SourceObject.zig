@@ -1,5 +1,6 @@
 const std = @import("std");
 const IRparser = @import("../parser/IRparser.zig");
+const Stack = @import("./Stack.zig");
 
 const SourceObject = @This();
 
@@ -16,13 +17,13 @@ pub const FunctionGetError = error{
 };
 
 source: []const u8,
-tape: []u8,
+stack: Stack,
 instr_iter: IRparser.InstructionIterator = undefined,
 func_table: FunctionTable = undefined,
 debug_enabled: bool = true,
 
-pub fn construct(source: []const u8, tape: []u8, allocator: std.mem.Allocator) FunctionTableError!SourceObject {
-    var source_obj = SourceObject{ .source = source, .tape = tape };
+pub fn construct(source: []const u8, stack: Stack, allocator: std.mem.Allocator) FunctionTableError!SourceObject {
+    var source_obj = SourceObject{ .source = source, .stack = stack };
     var line_iter = IRparser.tokenize(source);
 
     source_obj.instr_iter = IRparser.InstructionIterator.construct(line_iter);

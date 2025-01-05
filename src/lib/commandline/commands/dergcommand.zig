@@ -5,5 +5,5 @@ pub const derg_command: ICommand = .{ .name = "derg", .description = "possibly p
 
 fn execute(args: []const []const u8) CommandArgsError![]const u8 {
     _ = args;
-    return "here be dragons\n";
+    return "here be dragons\n\r";
 }

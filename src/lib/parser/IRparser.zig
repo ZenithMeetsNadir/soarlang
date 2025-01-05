@@ -1,23 +1,33 @@
 const std = @import("std");
 const instruction = @import("../interpreter/instruction.zig");
+const globals = @import("../interpreter/globals.zig");
 const SourceObject = @import("../interpreter/SourceObject.zig");
 const FunctionTable = SourceObject.FunctionTable;
 const FunctionTableError = SourceObject.FunctionTableError;
 
 pub fn sepatareLines(source: []const u8) std.mem.SplitIterator(u8, .any) {
-    return std.mem.splitAny(u8, source, "\r\n");
+    return std.mem.splitAny(u8, source, "\r\n\r");
 }
 
 pub const ArgumentIterator = struct {
     line_iter: std.mem.SplitIterator(u8, .any),
+    comment: bool = false,
 
-    fn isValid(word: []const u8) bool {
-        return word.len > 0;
+    fn isValid(self: ArgumentIterator, word: []const u8) bool {
+        return word.len > 0 and !self.comment;
     }
 
     pub fn next(self: *ArgumentIterator) ?[]const u8 {
         return while (self.line_iter.next()) |word| {
-            if (isValid(word))
+            if (word.len >= 2) {
+                switch (globals.squashStrBlock(word[0..2])) {
+                    globals.squashStrBlock(";(") => self.comment = true,
+                    globals.squashStrBlock(");") => self.comment = false,
+                    else => {},
+                }
+            }
+
+            if (isValid(self.*, word))
                 break word;
         } else null;
     }

@@ -3,6 +3,7 @@ const byteparser = @import("../parser/byteparser.zig");
 const IRparser = @import("../parser/IRparser.zig");
 const globals = @import("globals.zig");
 const float = globals.float;
+const Stack = @import("./Stack.zig");
 
 pub const Instruction = enum {
     // no args
@@ -219,8 +220,8 @@ pub fn negateWord(tape: []u8, address: usize) AddressError!void {
 }
 
 pub fn initTape(tape: []u8) AddressError!void {
-    try setUnsigned(tape, globals.SP, globals.SP_init_value);
-    try setUnsigned(tape, globals.FP, globals.SP_init_value);
+    try setUnsigned(tape, Stack.SP, Stack.SP_init_value);
+    try setUnsigned(tape, Stack.FP, Stack.SP_init_value);
 }
 
 pub fn andWord(tape: []u8, address: usize, value: isize) AddressError!void {
@@ -279,22 +280,23 @@ pub fn greater(tape: []u8, address: usize, value1: isize, value2: isize) Address
     try setWord(tape, address, @intFromBool(value1 > value2));
 }
 
-pub fn dereferenceWord(tape: []u8, address: usize) AddressError!void {
+pub fn dereferenceWord(tape: []u8, stack_tape: []const u8, address: usize) AddressError!void {
     const deref_addr = try wordUnsigned(tape, address);
-    try setWord(tape, address, try wordValue(tape, deref_addr));
+    std.debug.print("deref_addr: {d}\n\r", .{deref_addr});
+    try setWord(tape, address, try wordValue(stack_tape, deref_addr));
 }
 
 pub fn reserve(tape: []u8) MemoryError!void {
-    incrementWSize(tape, globals.SP) catch return MemoryError.NotEnoughMemory;
+    incrementWSize(tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
 }
 
-pub fn stackAlloc(tape: []u8, address: usize) MemoryError!void {
-    setUnsigned(tape, address, globals.SP) catch return MemoryError.NotEnoughMemory;
-    try reserve(tape);
+pub fn stackAlloc(tape: []u8, stack_tape: []u8, address: usize) MemoryError!void {
+    setUnsigned(tape, address, Stack.SP) catch return MemoryError.NotEnoughMemory;
+    try reserve(stack_tape);
 }
 
 pub fn push(tape: []u8, value: isize) MemoryError!void {
-    const sp_point = wordUnsigned(tape, globals.SP) catch return MemoryError.NotEnoughMemory;
+    const sp_point = wordUnsigned(tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
     setWord(tape, sp_point, value) catch return MemoryError.NotEnoughMemory;
     try reserve(tape);
 }
@@ -303,10 +305,10 @@ pub fn call(tape: []u8, arg_count: isize) MemoryError!void {
     if (arg_count > globals.num_registers)
         return MemoryError.NotEnoughMemory;
 
-    const fp_point = wordValue(tape, globals.FP) catch return MemoryError.NotEnoughMemory;
+    const fp_point = wordValue(tape, Stack.FP) catch return MemoryError.NotEnoughMemory;
 
-    const sp_point = wordUnsigned(tape, globals.SP) catch return MemoryError.NotEnoughMemory;
-    setUnsigned(tape, globals.FP, sp_point) catch return MemoryError.NotEnoughMemory;
+    const sp_point = wordUnsigned(tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
+    setUnsigned(tape, Stack.FP, sp_point) catch return MemoryError.NotEnoughMemory;
 
     try push(tape, fp_point);
 
@@ -317,15 +319,15 @@ pub fn call(tape: []u8, arg_count: isize) MemoryError!void {
         i += 1;
         reg_addr += @sizeOf(usize);
     }) {
-        const reg_val = wordValue(tape, reg_addr) catch return MemoryError.NotEnoughMemory;
+        const reg_val = wordValue(&globals.global_mem, reg_addr) catch return MemoryError.NotEnoughMemory;
         try push(tape, reg_val);
     }
 }
 
 pub fn @"return"(tape: []u8) AddressError!void {
-    const fp_point = try wordUnsigned(tape, globals.FP);
-    try setUnsigned(tape, globals.SP, fp_point);
+    const fp_point = try wordUnsigned(tape, Stack.FP);
+    try setUnsigned(tape, Stack.SP, fp_point);
 
     const fp_ret = try wordUnsigned(tape, fp_point);
-    try setUnsigned(tape, globals.FP, fp_ret);
+    try setUnsigned(tape, Stack.FP, fp_ret);
 }

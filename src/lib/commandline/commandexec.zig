@@ -17,7 +17,7 @@ pub fn executePrintOutput(args: []const []const u8) void {
     const log = executeCommand(args) catch |err| blk: {
         break :blk switch (err) {
             CommandAdressingError.NoCommandProvided => help_command.execute(args) catch ">.< Oops! Help command failed, how may I help you?",
-            CommandAdressingError.UnknownCommand => "Hate to say that, but no such command exists O'_o\n",
+            CommandAdressingError.UnknownCommand => "Hate to say that, but no such command exists O'_o\n\r",
         };
     };
 

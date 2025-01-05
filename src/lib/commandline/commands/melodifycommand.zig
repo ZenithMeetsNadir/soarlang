@@ -5,7 +5,7 @@ const IRparser = @import("../../parser/IRparser.zig");
 const fileops = @import("../../file/fileops.zig");
 const interpret = @import("../../interpreter/interpret.zig");
 const SourceObject = @import("../../interpreter/SourceObject.zig");
-const tape = &@import("../../interpreter/tape.zig").tape;
+const Stack = @import("../../interpreter/Stack.zig");
 
 pub const melodify_command: ICommand = .{ .name = "melodify", .description = description, .execute = execute };
 
@@ -17,8 +17,9 @@ fn execute(args: []const []const u8) CommandArgsError![]const u8 {
 
     const path = args[2];
 
-    const source = fileops.readFile(path, std.heap.page_allocator) catch return "an unknown error occurred while opening file";
-    var source_obj = SourceObject.construct(source, tape, std.heap.page_allocator) catch return "an unknown error occurred while constructing source object";
+    const source = fileops.readFile(path, std.heap.page_allocator) catch |err| return @errorName(err);
+    const stack = Stack{ .stack_tape = &Stack.main_tape };
+    var source_obj = SourceObject.construct(source, stack, std.heap.page_allocator) catch |err| return @errorName(err);
 
     interpret.interpretSourceObj(&source_obj) catch |err| return @errorName(err);
 

@@ -1,6 +1,14 @@
 const std = @import("std");
+const byteparser = @import("../parser/byteparser.zig");
+const Stack = @import("./Stack.zig");
 
-pub const float = switch (@sizeOf(isize)) {
+pub const GlobalError = error{
+    CannotReference,
+};
+
+pub const word_size = @sizeOf(usize);
+
+pub const float = switch (word_size) {
     4 => f32,
     8 => f64,
     else => f64,
@@ -8,48 +16,53 @@ pub const float = switch (@sizeOf(isize)) {
 
 pub const soar_lang_endian: std.builtin.Endian = .little;
 
-// pointers
-pub const SP = 0;
-pub const FP = SP + @sizeOf(usize);
-
 // registers
 pub const num_registers = 6;
-pub const A = FP + @sizeOf(usize);
-pub const B = A + @sizeOf(usize);
-pub const C = B + @sizeOf(usize);
-pub const D = C + @sizeOf(usize);
-pub const E = D + @sizeOf(usize);
-pub const F = E + @sizeOf(usize);
+pub const A = 0;
+pub const B = A + word_size;
+pub const C = B + word_size;
+pub const D = C + word_size;
+pub const E = D + word_size;
+pub const F = E + word_size;
 
-pub const GlobalError = error{
-    CannotReference,
-};
+pub const global_mem_size = num_registers * word_size;
 
-fn strEql(a: []const u8, b: []const u8) bool {
-    return std.mem.eql(u8, a, b);
+pub var global_mem: [global_mem_size]u8 = undefined;
+
+const StrBlockT = u64;
+pub fn squashStrBlock(str: []const u8) StrBlockT {
+    if (str.len > @sizeOf(StrBlockT))
+        return 0;
+
+    var char_arr: [@sizeOf(StrBlockT)]u8 = undefined;
+    std.mem.copyForwards(u8, &char_arr, str);
+
+    return byteparser.assemb(StrBlockT, &char_arr, soar_lang_endian);
 }
 
-pub fn referenceGlobal(global: []const u8) GlobalError!usize {
-    if (strEql(global, "SP")) {
-        return SP;
-    } else if (strEql(global, "FP")) {
-        return FP;
-    } else if (strEql(global, "A")) {
-        return A;
-    } else if (strEql(global, "B")) {
-        return B;
-    } else if (strEql(global, "C")) {
-        return C;
-    } else if (strEql(global, "D")) {
-        return D;
-    } else if (strEql(global, "E")) {
-        return E;
-    } else if (strEql(global, "F")) {
-        return F;
+pub const EmbedPtr = struct {
+    address: usize,
+    is_global: bool,
+
+    pub fn globalPtr(address: usize) EmbedPtr {
+        return EmbedPtr{ .address = address, .is_global = true };
     }
 
-    return GlobalError.CannotReference;
-}
+    pub fn nonGlobalPtr(address: usize) EmbedPtr {
+        return EmbedPtr{ .address = address, .is_global = false };
+    }
+};
 
-// init stack pointer
-pub const SP_init_value = F + @sizeOf(usize);
+pub fn referenceGlobal(global: []const u8) GlobalError!EmbedPtr {
+    return switch (squashStrBlock(global)) {
+        squashStrBlock("SP") => EmbedPtr.nonGlobalPtr(Stack.SP),
+        squashStrBlock("FP") => EmbedPtr.nonGlobalPtr(Stack.FP),
+        squashStrBlock("A") => EmbedPtr.globalPtr(A),
+        squashStrBlock("B") => EmbedPtr.globalPtr(B),
+        squashStrBlock("C") => EmbedPtr.globalPtr(C),
+        squashStrBlock("D") => EmbedPtr.globalPtr(D),
+        squashStrBlock("E") => EmbedPtr.globalPtr(E),
+        squashStrBlock("F") => EmbedPtr.globalPtr(F),
+        else => GlobalError.CannotReference,
+    };
+}

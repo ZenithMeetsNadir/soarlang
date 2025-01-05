@@ -6,8 +6,8 @@ RESRV
 SET B 4
 CALL 2 @_factorial
 
-PUT [F]
 TESTEQL [F] 24
+PUT [F]
 
 func @_factorial
     SET A FP
