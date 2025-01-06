@@ -152,7 +152,7 @@ pub fn breakCodeBlock(instr_iter: *InstructionIterator) void {
 
     var open_blocks: usize = 0;
 
-    while (instr_iter.next()) |arg_iter| {
+    while (instr_iter.next().*) |arg_iter| {
         var arg_iter_mut = arg_iter;
         const instr_name = arg_iter_mut.first() orelse continue;
 
@@ -184,7 +184,7 @@ pub fn interpretIf(condition: bool, instr_iter: *InstructionIterator, source_obj
     if (condition) {
         try interpretCodeBlock(instr_iter, source_obj_ref);
 
-        const arg_iter = instr_iter.peek() orelse return;
+        const arg_iter = instr_iter.peek().* orelse return;
         if (std.mem.eql(u8, arg_iter.peekInstrName() orelse return, @tagName(instruction.Instruction.ELSE)))
             breakCodeBlock(instr_iter);
     } else breakCodeBlock(instr_iter);
@@ -204,7 +204,7 @@ pub fn interpretSourceObj(source_obj: *SourceObject) InterpretError!void {
 pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const SourceObject) InterpretError!void {
     const tape = source_obj_ref.stack.stack_tape;
 
-    while (instr_iter.next()) |arg_iter| {
+    while (instr_iter.next().*) |arg_iter| {
         var arg_iter_mut = arg_iter;
         const instr_name = arg_iter_mut.first() orelse continue;
         const instr = instruction.Instruction.fromString(instr_name) orelse continue;
@@ -361,5 +361,7 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                 else => unreachable,
             }
         }
+
+        // TODO modify while loop argument iterator to be passed by referencek
     }
 }
