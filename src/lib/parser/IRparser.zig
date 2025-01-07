@@ -4,6 +4,8 @@ const globals = @import("../interpreter/globals.zig");
 const SourceObject = @import("../interpreter/SourceObject.zig");
 const FunctionTable = SourceObject.FunctionTable;
 const FunctionTableError = SourceObject.FunctionTableError;
+const LangConfig = @import("../interpreter/LangConfig.zig");
+const squashStrBlock = globals.squashStrBlock;
 
 pub fn sepatareLines(source: []const u8) std.mem.SplitIterator(u8, .any) {
     return std.mem.splitAny(u8, source, "\r\n\r");
@@ -63,7 +65,6 @@ pub const InstructionIterator = struct {
         return self;
     }
 
-    /// do not return the given ArgumentIterator outside of this struct's lifespan as it has a pointer to one of its fields
     pub fn next(self: *InstructionIterator) ?ArgumentIterator {
         return while (self.line_iter.next()) |arg_iter| {
             if (self.func_body and !self.is_func)
@@ -127,6 +128,36 @@ pub fn splitLine(line: []const u8) ArgumentIterator {
 
 pub fn tokenize(source: []const u8) LineIterator {
     return LineIterator{ .source_iter = sepatareLines(source) };
+}
+
+pub fn readLangConfig(instr_iter: *InstructionIterator) LangConfig {
+    var lang_config = LangConfig{};
+
+    while (instr_iter.peek()) |arg_iter| : (_ = instr_iter.next()) {
+        if (arg_iter.peekInstrName()) |instr_name| {
+            if (instr_name[0] == '?') {
+                var kv_pair = std.mem.splitScalar(u8, instr_name, '=');
+
+                const key = blk: {
+                    const q_key = kv_pair.first();
+                    if (q_key.len <= 1)
+                        continue;
+
+                    break :blk q_key[1..];
+                };
+
+                const value = kv_pair.next() orelse continue;
+
+                switch (squashStrBlock(key)) {
+                    squashStrBlock("language"), squashStrBlock("lang") => lang_config.language = std.meta.stringToEnum(LangConfig.Language, value) orelse continue,
+                    squashStrBlock("langver") => lang_config.version = value,
+                    else => continue,
+                }
+            } else break;
+        }
+    }
+
+    return lang_config;
 }
 
 pub fn createFnTable(line_iter: *LineIterator, allocator: std.mem.Allocator) FunctionTableError!FunctionTable {

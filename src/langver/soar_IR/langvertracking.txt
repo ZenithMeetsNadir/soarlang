@@ -1,0 +1,9 @@
+soar_IR language versioning follows these rules:
+    1. Each major version has its own dedicated interpreter || parser version
+    2. Minor versions have to be stable
+
+1.0.0 
+    
+1.1.0
+    constant offset
+    dereference recursion

@@ -1,6 +1,7 @@
 const std = @import("std");
 const IRparser = @import("../parser/IRparser.zig");
 const Stack = @import("./Stack.zig");
+const LangConfig = @import("./LangConfig.zig");
 
 const SourceObject = @This();
 
@@ -17,6 +18,7 @@ pub const FunctionGetError = error{
 };
 
 source: []const u8,
+lang_config: LangConfig = undefined,
 stack: Stack,
 instr_iter: IRparser.InstructionIterator = undefined,
 func_table: FunctionTable = undefined,
@@ -27,6 +29,7 @@ pub fn construct(source: []const u8, stack: Stack, allocator: std.mem.Allocator)
     var line_iter = IRparser.tokenize(source);
 
     source_obj.instr_iter = IRparser.InstructionIterator.construct(line_iter);
+    source_obj.lang_config = IRparser.readLangConfig(&source_obj.instr_iter);
     source_obj.func_table = try IRparser.createFnTable(&line_iter, allocator);
 
     return source_obj;

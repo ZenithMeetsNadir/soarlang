@@ -30,7 +30,7 @@ const ExecutionInterruptionError = error{
     BreakWhileLoop,
 };
 
-const InterpretError = AddressError || MemoryError || ExecutionInterruptionError || InstructionError || ArgumentError || FunctionGetError;
+pub const InterpretError = AddressError || MemoryError || ExecutionInterruptionError || InstructionError || ArgumentError || FunctionGetError;
 
 fn unembrace(str: []const u8) []const u8 {
     return str[1 .. str.len - 1];

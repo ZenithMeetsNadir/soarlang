@@ -4,6 +4,7 @@ const CommandArgsError = @import("../clineerror.zig").CommandArgsError;
 const IRparser = @import("../../parser/IRparser.zig");
 const fileops = @import("../../file/fileops.zig");
 const interpret = @import("../../interpreter/interpret.zig");
+const InterpretError = interpret.InterpretError;
 const SourceObject = @import("../../interpreter/SourceObject.zig");
 const Stack = @import("../../interpreter/Stack.zig");
 
@@ -21,7 +22,15 @@ fn execute(args: []const []const u8) CommandArgsError![]const u8 {
     const stack = Stack{ .stack_tape = &Stack.main_tape };
     var source_obj = SourceObject.construct(source, stack, std.heap.page_allocator) catch |err| return @errorName(err);
 
-    interpret.interpretSourceObj(&source_obj) catch |err| return @errorName(err);
+    return configureInterpret(&source_obj) catch |err| return @errorName(err);
+}
 
-    return "exit code 0";
+fn configureInterpret(source_obj: *SourceObject) InterpretError![]const u8 {
+    switch (source_obj.lang_config.language) {
+        .soar_IR => {
+            try interpret.interpretSourceObj(source_obj);
+            return "soar_IR interpreter exit code 0";
+        },
+        .soar_hlvl => return "soar high level language compiler is currently being developed...",
+    }
 }
