@@ -11,23 +11,14 @@ pub fn sepatareLines(source: []const u8) std.mem.SplitIterator(u8, .any) {
 
 pub const ArgumentIterator = struct {
     line_iter: std.mem.SplitIterator(u8, .any),
-    comment: bool = false,
 
-    fn isValid(self: ArgumentIterator, word: []const u8) bool {
-        return word.len > 0 and !self.comment;
+    fn isValid(word: []const u8) bool {
+        return word.len > 0;
     }
 
     pub fn next(self: *ArgumentIterator) ?[]const u8 {
         return while (self.line_iter.next()) |word| {
-            if (word.len >= 2) {
-                switch (globals.squashStrBlock(word[0..2])) {
-                    globals.squashStrBlock(";(") => self.comment = true,
-                    globals.squashStrBlock(");") => self.comment = false,
-                    else => {},
-                }
-            }
-
-            if (self.isValid(word))
+            if (isValid(word))
                 break word;
         } else null;
     }
@@ -54,9 +45,6 @@ pub const InstructionIterator = struct {
     func_body: bool = false,
     code_block: bool = false,
 
-    comment: bool = false,
-    prev_arg_iter: ?ArgumentIterator = null,
-
     pub fn construct(line_iter: LineIterator) InstructionIterator {
         return InstructionIterator{ .line_iter = line_iter };
     }
@@ -75,26 +63,9 @@ pub const InstructionIterator = struct {
         return self;
     }
 
-    pub fn next(self: *InstructionIterator) *?ArgumentIterator {
-        self.prev_arg_iter = while (self.line_iter.next()) |arg_iter| {
-            if (self.prev_arg_iter) |prev_arg_iter| {
-                self.comment = prev_arg_iter.comment;
-            }
-
-            if (self.comment) {
-                var arg_iter_cpy = arg_iter;
-                arg_iter_cpy.comment = self.comment;
-
-                std.debug.print("instr comment before iteration: {any}\n\r", .{arg_iter_cpy.comment});
-
-                while (arg_iter_cpy.next()) |_| {}
-
-                std.debug.print("instr comment after iteration: {any}\n\r", .{arg_iter_cpy.comment});
-
-                if (arg_iter_cpy.comment)
-                    continue;
-            }
-
+    /// do not return the given ArgumentIterator outside of this struct's lifespan as it has a pointer to one of its fields
+    pub fn next(self: *InstructionIterator) ?ArgumentIterator {
+        return while (self.line_iter.next()) |arg_iter| {
             if (self.func_body and !self.is_func)
                 break null;
 
@@ -128,15 +99,9 @@ pub const InstructionIterator = struct {
 
             break arg_iter;
         } else null;
-
-        if (self.prev_arg_iter) |prev_arg_iter| {
-            std.debug.print("instr comment: {any}\n\r", .{prev_arg_iter.comment});
-        }
-
-        return &self.prev_arg_iter;
     }
 
-    pub fn peek(self: InstructionIterator) *?ArgumentIterator {
+    pub fn peek(self: InstructionIterator) ?ArgumentIterator {
         var self_cpy = self;
         return self_cpy.next();
     }
