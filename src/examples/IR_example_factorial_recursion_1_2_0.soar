@@ -5,11 +5,10 @@ INIT
 
 STALLOC A
 SET F A 
-SET B 2
+SET B 3
 
 CALL 2 @_factorial
 
-; TESTEQL [F] 120
 PUT [F]
 
 func @_factorial
@@ -27,6 +26,6 @@ func @_factorial
     CALL 2 @_factorial
 
     MUL [SP]-16 [SP-8]
-    SET [_RTADDR] [SP]-16
+    SET [_RTADDR] [SP-16]
     RET
 endfunc

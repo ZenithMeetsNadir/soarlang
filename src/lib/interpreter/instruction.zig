@@ -290,7 +290,8 @@ pub fn reserve(tape: []u8) MemoryError!void {
 }
 
 pub fn stackAlloc(tape: []u8, stack_tape: []u8, address: usize) MemoryError!void {
-    setUnsigned(tape, address, Stack.SP) catch return MemoryError.NotEnoughMemory;
+    const sp_point = wordUnsigned(stack_tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
+    setUnsigned(tape, address, sp_point) catch return MemoryError.NotEnoughMemory;
     try reserve(stack_tape);
 }
 

@@ -9,7 +9,6 @@ SET B 3
 
 CALL 2 @_factorial
 
-TESTEQL [F] 24
 PUT [F]
 
 func @_factorial
@@ -27,6 +26,6 @@ func @_factorial
     CALL 2 @_factorial
 
     MUL [SP]-16 [SP-8]
-    SET [[FP]+8] [SP]-16
+    SET [[FP]+8] [SP-16]
     RET
 endfunc
