@@ -4,6 +4,11 @@ const globals = @import("./globals.zig");
 
 const Stack = @This();
 
+pub const Properties = struct {
+    pub const return_address_offset: usize = globals.word_size;
+    pub const first_arg_offset: usize = return_address_offset + globals.word_size;
+};
+
 pub const defaut_stack_size: usize = math.pow(usize, 2, 10);
 pub var main_tape: [defaut_stack_size]u8 = undefined;
 

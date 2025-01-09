@@ -1,32 +1,32 @@
 ?lang=soar_IR
-?langver=1.1.0
+?langver=1.2.0
 
 INIT
 
 STALLOC A
 SET F A 
-SET B 3
+SET B 2
 
 CALL 2 @_factorial
 
-TESTEQL [F] 24
+; TESTEQL [F] 120
 PUT [F]
 
 func @_factorial
-    IFEQL [FP+16] 1
-        SET [[FP]+8] 1
+    IFEQL _ARG0 1
+        SET [_RTADDR] 1
         RET
         BREAKFN
     END
     
-    PUSH [FP+16]
+    PUSH _ARG0
     STALLOC A 
-    SET B [FP+16]
+    SET B _ARG0
     DEC B
     
     CALL 2 @_factorial
 
     MUL [SP]-16 [SP-8]
-    SET [[FP]+8] [SP]-16
+    SET [_RTADDR] [SP]-16
     RET
 endfunc

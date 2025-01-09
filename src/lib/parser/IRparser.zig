@@ -5,7 +5,10 @@ const SourceObject = @import("../interpreter/SourceObject.zig");
 const FunctionTable = SourceObject.FunctionTable;
 const FunctionTableError = SourceObject.FunctionTableError;
 const LangConfig = @import("../interpreter/LangConfig.zig");
-const squashStrBlock = globals.squashStrBlock;
+const byteparser = @import("./byteparser.zig");
+const squashStrBlock = byteparser.squashStrBlock;
+
+pub const config_prefix: u8 = '?';
 
 pub fn sepatareLines(source: []const u8) std.mem.SplitIterator(u8, .any) {
     return std.mem.splitAny(u8, source, "\r\n\r");
@@ -130,22 +133,21 @@ pub fn tokenize(source: []const u8) LineIterator {
     return LineIterator{ .source_iter = sepatareLines(source) };
 }
 
+pub fn acknowledgeSymbPrefix(str: []const u8, prefix: u8) ?[]const u8 {
+    if (str.len <= 1 or str[0] != prefix)
+        return null;
+
+    return str[1..];
+}
+
 pub fn readLangConfig(instr_iter: *InstructionIterator) LangConfig {
     var lang_config = LangConfig{};
 
     while (instr_iter.peek()) |arg_iter| : (_ = instr_iter.next()) {
-        if (arg_iter.peekInstrName()) |instr_name| {
-            if (instr_name[0] == '?') {
-                var kv_pair = std.mem.splitScalar(u8, instr_name, '=');
-
-                const key = blk: {
-                    const q_key = kv_pair.first();
-                    if (q_key.len <= 1)
-                        continue;
-
-                    break :blk q_key[1..];
-                };
-
+        if (arg_iter.peekInstrName()) |q_config| {
+            if (acknowledgeSymbPrefix(q_config, config_prefix)) |config| {
+                var kv_pair = std.mem.splitScalar(u8, config, '=');
+                const key = kv_pair.first();
                 const value = kv_pair.next() orelse continue;
 
                 switch (squashStrBlock(key)) {
@@ -153,7 +155,10 @@ pub fn readLangConfig(instr_iter: *InstructionIterator) LangConfig {
                     squashStrBlock("langver") => lang_config.version = value,
                     else => continue,
                 }
-            } else break;
+            }
+
+            if (q_config[0] != config_prefix)
+                break;
         }
     }
 

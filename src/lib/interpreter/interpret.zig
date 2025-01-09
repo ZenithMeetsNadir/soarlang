@@ -36,6 +36,22 @@ fn unembrace(str: []const u8) []const u8 {
     return str[1 .. str.len - 1];
 }
 
+fn resolveSymbol(tape: []const u8, usymbol: []const u8) (ArgumentError || instruction.AddressError)!usize {
+    if (IRparser.acknowledgeSymbPrefix(usymbol, '_')) |symbol| {
+        switch (byteparser.squashStrBlock(symbol)) {
+            byteparser.squashStrBlock("RTADDR") => return try instruction.getReturnAddress(tape),
+            else => {
+                if (std.mem.eql(u8, symbol[0..3], "ARG")) {
+                    const arg_num = std.fmt.parseUnsigned(usize, symbol[3..], 0) catch return ArgumentError.CouldNotParse;
+                    return try instruction.getArgAddress(tape, arg_num);
+                }
+            },
+        }
+    }
+
+    return ArgumentError.CouldNotParse;
+}
+
 fn resolve(tape: *[]const u8, str: []const u8, is_value_resolution: bool) (ArgumentError || instruction.AddressError)!isize {
     var value: isize = undefined;
 
@@ -61,9 +77,11 @@ fn resolve(tape: *[]const u8, str: []const u8, is_value_resolution: bool) (Argum
                     break :blk switch (err) {
                         std.fmt.ParseIntError.Overflow => return ArgumentError.CouldNotParse,
                         std.fmt.ParseIntError.InvalidCharacter => inv_char: {
-                            print("\t\treferencing global: {s}\n\r", .{no_offset_str});
-                            const ptr = globals.referenceGlobal(no_offset_str) catch return ArgumentError.CouldNotParse;
-                            print("\t\treferenced global - address: {d}\n\r", .{ptr.address});
+                            print("\t\treferencing symbol: {s}\n\r", .{no_offset_str});
+                            const ptr = globals.referenceGlobal(no_offset_str) catch glblref_err: {
+                                break :glblref_err globals.EmbedPtr.nonGlobalPtr(try resolveSymbol(tape.*, no_offset_str));
+                            };
+                            print("\t\tresolved symbol - address: {d}\n\r", .{ptr.address});
 
                             const ptr_tape: []const u8 = if (ptr.is_global) &globals.global_mem else tape.*;
 
@@ -76,9 +94,11 @@ fn resolve(tape: *[]const u8, str: []const u8, is_value_resolution: bool) (Argum
                     break :blk switch (err) {
                         std.fmt.ParseIntError.Overflow => return ArgumentError.CouldNotParse,
                         std.fmt.ParseIntError.InvalidCharacter => inv_char: {
-                            print("\t\treferencing global: {s}\n\r", .{no_offset_str});
-                            const ptr = globals.referenceGlobal(no_offset_str) catch return ArgumentError.CouldNotParse;
-                            print("\t\treferenced global - address: {d}\n\r", .{ptr.address});
+                            print("\t\treferencing symbol: {s}\n\r", .{no_offset_str});
+                            const ptr = globals.referenceGlobal(no_offset_str) catch glblref_err: {
+                                break :glblref_err globals.EmbedPtr.nonGlobalPtr(try resolveSymbol(tape.*, no_offset_str));
+                            };
+                            print("\t\tresolved symbol - address: {d}\n\r", .{ptr.address});
 
                             if (ptr.is_global) {
                                 tape.* = &globals.global_mem;

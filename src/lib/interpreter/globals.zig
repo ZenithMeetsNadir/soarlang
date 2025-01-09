@@ -1,5 +1,6 @@
 const std = @import("std");
 const byteparser = @import("../parser/byteparser.zig");
+const squashStrBlock = byteparser.squashStrBlock;
 const Stack = @import("./Stack.zig");
 
 pub const GlobalError = error{
@@ -28,17 +29,6 @@ pub const F = E + word_size;
 pub const global_mem_size = num_registers * word_size;
 
 pub var global_mem: [global_mem_size]u8 = undefined;
-
-const StrBlockT = u64;
-pub fn squashStrBlock(str: []const u8) StrBlockT {
-    if (str.len > @sizeOf(StrBlockT))
-        return 0;
-
-    var char_arr: [@sizeOf(StrBlockT)]u8 = undefined;
-    std.mem.copyForwards(u8, &char_arr, str);
-
-    return byteparser.assemb(StrBlockT, &char_arr, soar_lang_endian);
-}
 
 pub const EmbedPtr = struct {
     address: usize,

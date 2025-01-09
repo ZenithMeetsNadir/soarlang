@@ -167,7 +167,7 @@ pub fn word(tape: []const u8, address: usize) AddressError![]const u8 {
     if (address > tape.len - @sizeOf(@TypeOf(address)))
         return AddressError.BadAddress;
 
-    return tape[address .. address + @sizeOf(usize)];
+    return tape[address .. address + globals.word_size];
 }
 
 pub fn wordValue(tape: []const u8, address: usize) AddressError!isize {
@@ -261,11 +261,11 @@ pub fn decrementWord(tape: []u8, address: usize) AddressError!void {
 }
 
 pub fn incrementWSize(tape: []u8, address: usize) AddressError!void {
-    try addWord(tape, address, @sizeOf(usize));
+    try addWord(tape, address, globals.word_size);
 }
 
 pub fn decrementWSize(tape: []u8, address: usize) AddressError!void {
-    try addWord(tape, address, -@sizeOf(usize));
+    try addWord(tape, address, -globals.word_size);
 }
 
 pub fn equal(tape: []u8, address: usize, value1: isize, value2: isize) AddressError!void {
@@ -316,7 +316,7 @@ pub fn call(tape: []u8, arg_count: isize) MemoryError!void {
 
     while (i < arg_count) : ({
         i += 1;
-        reg_addr += @sizeOf(usize);
+        reg_addr += globals.word_size;
     }) {
         const reg_val = wordValue(&globals.global_mem, reg_addr) catch return MemoryError.NotEnoughMemory;
         try push(tape, reg_val);
@@ -329,4 +329,14 @@ pub fn @"return"(tape: []u8) AddressError!void {
 
     const fp_ret = try wordUnsigned(tape, fp_point);
     try setUnsigned(tape, Stack.FP, fp_ret);
+}
+
+pub fn getReturnAddress(tape: []const u8) AddressError!usize {
+    const fp_point = try wordUnsigned(tape, Stack.FP);
+    return fp_point + Stack.Properties.return_address_offset;
+}
+
+pub fn getArgAddress(tape: []const u8, arg_num: usize) AddressError!usize {
+    const fp_point = try wordUnsigned(tape, Stack.FP);
+    return fp_point + Stack.Properties.first_arg_offset + arg_num * globals.word_size;
 }
