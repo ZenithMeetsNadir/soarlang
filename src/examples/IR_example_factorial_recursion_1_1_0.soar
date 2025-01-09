@@ -1,0 +1,34 @@
+?lang=soar_IR
+?langver=1.1.0
+
+INIT
+
+STALLOC A
+SET F A 
+SET B 4
+
+CALL 2 @_factorial
+
+TESTEQL [F] 24
+PUT [F]
+
+func @_factorial
+    IFEQL [FP+16] 1
+        DEREF [FP]+8
+        SET [FP]+8 1
+        RET
+        BREAKFN
+    END
+    
+    PUSH [FP+16]
+    STALLOC A 
+    SET B [FP+16]
+    DEC B
+    
+    CALL 2 @_factorial
+
+    MUL [SP]-16 [SP-8]
+    DEREF [FP]+16
+    SET [FP]+16 [SP]-16
+    RET
+endfunc

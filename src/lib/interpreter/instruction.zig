@@ -282,7 +282,6 @@ pub fn greater(tape: []u8, address: usize, value1: isize, value2: isize) Address
 
 pub fn dereferenceWord(tape: []u8, stack_tape: []const u8, address: usize) AddressError!void {
     const deref_addr = try wordUnsigned(tape, address);
-    std.debug.print("deref_addr: {d}\n\r", .{deref_addr});
     try setWord(tape, address, try wordValue(stack_tape, deref_addr));
 }
 
