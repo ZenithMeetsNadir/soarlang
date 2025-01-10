@@ -204,7 +204,7 @@ pub fn wordSized(tape: []const u8, address: usize, size: u8) AddressError!isize 
     if (size > globals.word_size)
         return AddressError.BadAddress;
 
-    const and_mask: isize = @bitCast(std.math.pow(usize, 2, @as(usize, size)) - 1);
+    const and_mask: isize = @bitCast(std.math.pow(usize, 2, 8 * @as(usize, size)) - 1);
     return try wordValue(tape, address) & and_mask;
 }
 
@@ -245,7 +245,7 @@ pub fn setWordSized(tape: []u8, address: usize, size: u8, value: isize) AddressE
 
     std.debug.print("{b}", .{try wordValue(tape, address)});
 
-    const and_mask: usize = ~(std.math.pow(usize, 2, @as(usize, size)) - 1);
+    const and_mask: usize = ~(std.math.pow(usize, 2, 8 * @as(usize, size)) - 1);
     try andWord(tape, address, @bitCast(and_mask));
     try orWord(tape, address, value);
 

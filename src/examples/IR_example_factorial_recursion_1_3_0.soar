@@ -5,7 +5,7 @@ INIT
 
 STLCSZ A 4
 SET F A
-SET B 3
+SET B 4
 
 CALL 2 @_factorial
 
@@ -13,7 +13,6 @@ PUTSZ [F] 4
 
 func @_factorial
     IFEQL _ARG0 1
-        SET E 0
         SETSZ [_RTADDR] 4 1
         RET
         BREAKFN
