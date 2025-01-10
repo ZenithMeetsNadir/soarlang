@@ -5,7 +5,7 @@ INIT
 
 STALLOC A
 SET F A 
-SET B 3
+SET B 5
 
 CALL 2 @_factorial
 

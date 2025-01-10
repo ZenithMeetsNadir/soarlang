@@ -33,8 +33,8 @@ pub const InterpretError = AddressError || MemoryError || ExecutionInterruptionE
 
 const DebugMode = enum { interpret_proc, visual_stack };
 
-const debug_interpret_proc: bool = false;
-const debug_visual_stack: bool = true;
+pub var debug_interpret_proc: bool = false;
+pub var debug_visual_stack: bool = false;
 
 fn debugPrint(mode: DebugMode, comptime fmt: []const u8, args: anytype) void {
     switch (mode) {
@@ -284,6 +284,27 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                 .DECWS => try instruction.decrementWSize(tape1, address1),
                 .DEREF => try instruction.dereferenceWord(tape1, tape, address1),
                 else => {
+                    if (instruction.Instruction.aaArg(instr)) {
+                        args = try unwrapArgs(&arg_iter_mut, 1);
+                        debugPrint(.interpret_proc, "\t<arg2: {s}>\n\r", .{args[0]});
+
+                        var tape2 = tape;
+                        const address2 = try resolveAddress(&tape2, args[0]);
+
+                        switch (instr) {
+                            else => {
+                                args = try unwrapArgs(&arg_iter_mut, 1);
+                                debugPrint(.interpret_proc, "\t<arg3: {s}>\n\r", .{args[0]});
+
+                                const value3 = try resolveValue(tape, args[0]);
+
+                                switch (instr) {
+                                    .BYTECPY => try instruction.copyBytes(tape1, address1, tape2, address2, @intCast(value3)),
+                                    else => unreachable,
+                                }
+                            },
+                        }
+                    }
                     if (instruction.Instruction.avArg(instr)) {
                         args = try unwrapArgs(&arg_iter_mut, 1);
                         debugPrint(.interpret_proc, "\t<arg2: {s}>\n\r", .{args[0]});
@@ -292,8 +313,10 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
 
                         switch (instr) {
                             .SET => try instruction.setWord(tape1, address1, value2),
+                            .STLCSZ => try instruction.stackAllocSized(tape1, tape, address1, @intCast(value2)),
                             .AND => try instruction.andWord(tape1, address1, value2),
                             .OR => try instruction.orWord(tape1, address1, value2),
+                            .PUTSZ => std.debug.print("{any}\n\r", .{try instruction.wordSized(tape1, address1, @intCast(value2))}),
                             .ADD => try instruction.addWord(tape1, address1, value2),
                             .SUB => try instruction.subtractWord(tape1, address1, value2),
                             .MUL => try instruction.multiplyWord(tape1, address1, value2),
@@ -307,6 +330,7 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                                     const value3 = try resolveValue(tape, args[0]);
 
                                     switch (instr) {
+                                        .SETSZ => try instruction.setWordSized(tape1, address1, @intCast(value2), value3),
                                         .EQL => try instruction.equal(tape1, address1, value2, value3),
                                         .SMLR => try instruction.equal(tape1, address1, value2, value3),
                                         .GRTR => try instruction.equal(tape1, address1, value2, value3),
@@ -336,6 +360,7 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
 
             switch (instr) {
                 .PUT => std.debug.print("{any}\n", .{value1}),
+                .RSVSZ => try instruction.reserveSized(tape, @intCast(value1)),
                 .PUSH => try instruction.push(tape, value1),
                 .IF => try interpretIf(value1 != 0, instr_iter, source_obj_ref),
                 .WHILE => {
@@ -373,6 +398,9 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
 
                         switch (instr) {
                             .IFEQL => try interpretIf(value1 == value2, instr_iter, source_obj_ref),
+                            .IFSMLR => try interpretIf(value1 < value2, instr_iter, source_obj_ref),
+                            .IFGRTR => try interpretIf(value1 > value2, instr_iter, source_obj_ref),
+                            .PUSHSZ => try instruction.pushSized(tape, @intCast(value1), value2),
                             .TESTEQL => {
                                 if (source_obj_ref.debug_enabled) {
                                     std.debug.assert(value1 == value2);
@@ -413,6 +441,17 @@ fn visualizeTape(tape: []const u8, start: usize, end: usize) void {
     const observed_tape = tape[start..end];
 
     var wsize_index: usize = 0;
+    while (wsize_index < globals.global_mem.len) : (wsize_index += globals.word_size) {
+        const value = instruction.wordValue(&globals.global_mem, wsize_index) catch return;
+
+        if (value == 0) {
+            debugPrint(.visual_stack, "[] ", .{});
+        } else debugPrint(.visual_stack, "{d} ", .{value});
+    }
+
+    debugPrint(.visual_stack, "\n\r", .{});
+
+    wsize_index = 0;
     while (wsize_index < observed_tape.len) : (wsize_index += globals.word_size) {
         const value = instruction.wordValue(tape, wsize_index) catch return;
 

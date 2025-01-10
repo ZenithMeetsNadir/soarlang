@@ -12,3 +12,6 @@ soar_IR language versioning follows these rules:
 1.2.0
     STALLOC fix
     reference helper symbols _RTADDR _ARGx
+
+1.3.0
+    facilitated some non-wordsize operations

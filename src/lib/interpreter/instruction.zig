@@ -54,13 +54,21 @@ pub const Instruction = enum {
 
     // <address> <address>
 
+    // <address> <address> <value>
+    /// copy arbitrary number of byte from address to address
+    BYTECPY,
+
     // <address> <value>
     /// set word at address
     SET,
-    /// bitwise and to word
+    /// allocate bytes on stack and store the address
+    STLCSZ,
+    /// bitwise and word
     AND,
-    /// bitwise or to word
+    /// bitwise or word
     OR,
+    /// print int to stderr
+    PUTSZ,
     /// add to word at address
     ADD,
     /// subtract from word at address
@@ -73,6 +81,8 @@ pub const Instruction = enum {
     MOD,
 
     // <address> <value> <value>
+    /// set bytes at address
+    SETSZ,
     /// determine whether words are equal
     EQL,
     /// determine whether word1 is smaller than word2
@@ -87,6 +97,8 @@ pub const Instruction = enum {
     // <value>
     /// print word to stderr
     PUT,
+    /// allocate bytes on stak (increment SP by size)
+    RSVSZ,
     /// push word to stack (SET + RESRV)
     PUSH,
     /// enter following code block if true, jump to else block otherwise
@@ -99,6 +111,12 @@ pub const Instruction = enum {
     // <value> <value>
     /// enter following code block if equal words, jump to else block otherwise
     IFEQL,
+    /// enter following code block if word1 is smaller that word2, jump to else block otherwise
+    IFSMLR,
+    /// enter following code block if word1 is greater that word2, jump to else block otherwise
+    IFGRTR,
+    /// push bytes to stack (SET + RSVSZ)
+    PUSHSZ,
     /// for testing purposes
     TESTEQL,
 
@@ -123,12 +141,20 @@ pub const Instruction = enum {
         return Instruction.inRange(instr, .STALLOC, .SETF);
     }
 
+    pub fn aaArg(instr: Instruction) bool {
+        return Instruction.inRange(instr, .BYTECPY, .BYTECPY);
+    }
+
+    pub fn aavArg(instr: Instruction) bool {
+        return Instruction.inRange(instr, .BYTECPY, .BYTECPY);
+    }
+
     pub fn avArg(instr: Instruction) bool {
         return Instruction.inRange(instr, .SET, .GRTR);
     }
 
     pub fn avvArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .EQL, .GRTR);
+        return Instruction.inRange(instr, .SETSZ, .GRTR);
     }
 
     pub fn afArg(instr: Instruction) bool {
@@ -164,7 +190,7 @@ pub const MemoryError = error{
 };
 
 pub fn word(tape: []const u8, address: usize) AddressError![]const u8 {
-    if (address > tape.len - @sizeOf(@TypeOf(address)))
+    if (address + @sizeOf(@TypeOf(address)) > tape.len)
         return AddressError.BadAddress;
 
     return tape[address .. address + globals.word_size];
@@ -172,6 +198,14 @@ pub fn word(tape: []const u8, address: usize) AddressError![]const u8 {
 
 pub fn wordValue(tape: []const u8, address: usize) AddressError!isize {
     return byteparser.assemb(isize, try word(tape, address), globals.soar_lang_endian);
+}
+
+pub fn wordSized(tape: []const u8, address: usize, size: u8) AddressError!isize {
+    if (size > globals.word_size)
+        return AddressError.BadAddress;
+
+    const and_mask: isize = @bitCast(std.math.pow(usize, 2, @as(usize, size)) - 1);
+    return try wordValue(tape, address) & and_mask;
 }
 
 pub fn wordUnsigned(tape: []const u8, address: usize) AddressError!usize {
@@ -191,8 +225,31 @@ pub fn setWordBytes(tape: []u8, address: usize, bytes: [@sizeOf(@TypeOf(address)
     }
 }
 
+pub fn copyBytes(from_tape: []const u8, from_address: usize, to_tape: []u8, to_address: usize, num_bytes: usize) AddressError!void {
+    if (to_address + num_bytes > to_tape.len or from_address + num_bytes > from_tape.len)
+        return AddressError.BadAddress;
+
+    const bytes = from_tape[from_address .. from_address + num_bytes];
+    for (bytes, to_address..) |byte, index| {
+        to_tape[index] = byte;
+    }
+}
+
 pub fn setWord(tape: []u8, address: usize, value: isize) AddressError!void {
     try setWordBytes(tape, address, byteparser.distr(isize, value, globals.soar_lang_endian));
+}
+
+pub fn setWordSized(tape: []u8, address: usize, size: u8, value: isize) AddressError!void {
+    if (size > globals.word_size)
+        return AddressError.BadAddress;
+
+    std.debug.print("{b}", .{try wordValue(tape, address)});
+
+    const and_mask: usize = ~(std.math.pow(usize, 2, @as(usize, size)) - 1);
+    try andWord(tape, address, @bitCast(and_mask));
+    try orWord(tape, address, value);
+
+    std.debug.print(" -> {b}\n\r", .{try wordValue(tape, address)});
 }
 
 pub fn setUnsigned(tape: []u8, address: usize, value: usize) AddressError!void {
@@ -289,16 +346,32 @@ pub fn reserve(tape: []u8) MemoryError!void {
     incrementWSize(tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
 }
 
+pub fn reserveSized(tape: []u8, size: u8) MemoryError!void {
+    addWord(tape, Stack.SP, @as(isize, size)) catch return MemoryError.NotEnoughMemory;
+}
+
 pub fn stackAlloc(tape: []u8, stack_tape: []u8, address: usize) MemoryError!void {
     const sp_point = wordUnsigned(stack_tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
     setUnsigned(tape, address, sp_point) catch return MemoryError.NotEnoughMemory;
     try reserve(stack_tape);
 }
 
+pub fn stackAllocSized(tape: []u8, stack_tape: []u8, address: usize, size: u8) MemoryError!void {
+    const sp_point = wordUnsigned(stack_tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
+    setUnsigned(tape, address, sp_point) catch return MemoryError.NotEnoughMemory;
+    try reserveSized(stack_tape, size);
+}
+
 pub fn push(tape: []u8, value: isize) MemoryError!void {
     const sp_point = wordUnsigned(tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
     setWord(tape, sp_point, value) catch return MemoryError.NotEnoughMemory;
     try reserve(tape);
+}
+
+pub fn pushSized(tape: []u8, size: u8, value: isize) MemoryError!void {
+    const sp_point = wordUnsigned(tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
+    setWordSized(tape, sp_point, size, value) catch return MemoryError.NotEnoughMemory;
+    try reserveSized(tape, size);
 }
 
 pub fn call(tape: []u8, arg_count: isize) MemoryError!void {
