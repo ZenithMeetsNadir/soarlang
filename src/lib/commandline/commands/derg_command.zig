@@ -1,5 +1,5 @@
 const ICommand = @import("../ICommand.zig");
-const CommandArgsError = @import("../clineerror.zig").CommandArgsError;
+const CommandArgsError = @import("../CLI_error.zig").CommandArgsError;
 
 pub const derg_command: ICommand = .{ .name = "derg", .description = "possibly prints a dragon", .execute = execute };
 

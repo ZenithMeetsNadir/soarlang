@@ -1,6 +1,6 @@
 const std = @import("std");
-const byteparser = @import("../parser/byteparser.zig");
-const squashStrBlock = byteparser.squashStrBlock;
+const byte_parser = @import("../parser/byte_parser.zig");
+const squashStrBlock = byte_parser.squashStrBlock;
 const Stack = @import("./Stack.zig");
 
 pub const GlobalError = error{

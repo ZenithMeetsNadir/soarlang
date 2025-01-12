@@ -1,6 +1,6 @@
 const std = @import("std");
-const byteparser = @import("../parser/byteparser.zig");
-const IRparser = @import("../parser/IRparser.zig");
+const byte_parser = @import("../parser/byte_parser.zig");
+const IR_parser = @import("../parser/IR_parser.zig");
 const globals = @import("globals.zig");
 const float = globals.float;
 const Stack = @import("./Stack.zig");
@@ -197,7 +197,7 @@ pub fn word(tape: []const u8, address: usize) AddressError![]const u8 {
 }
 
 pub fn wordValue(tape: []const u8, address: usize) AddressError!isize {
-    return byteparser.assemb(isize, try word(tape, address), globals.soar_lang_endian);
+    return byte_parser.assemb(isize, try word(tape, address), globals.soar_lang_endian);
 }
 
 pub fn wordSized(tape: []const u8, address: usize, size: u8) AddressError!isize {
@@ -209,11 +209,11 @@ pub fn wordSized(tape: []const u8, address: usize, size: u8) AddressError!isize 
 }
 
 pub fn wordUnsigned(tape: []const u8, address: usize) AddressError!usize {
-    return byteparser.assemb(usize, try word(tape, address), globals.soar_lang_endian);
+    return byte_parser.assemb(usize, try word(tape, address), globals.soar_lang_endian);
 }
 
 pub fn wordFloat(tape: []const u8, address: usize) AddressError!float {
-    return @bitCast(byteparser.assemb(isize, try word(tape, address), globals.soar_lang_endian));
+    return @bitCast(byte_parser.assemb(isize, try word(tape, address), globals.soar_lang_endian));
 }
 
 pub fn setWordBytes(tape: []u8, address: usize, bytes: [@sizeOf(@TypeOf(address))]u8) AddressError!void {
@@ -236,28 +236,24 @@ pub fn copyBytes(from_tape: []const u8, from_address: usize, to_tape: []u8, to_a
 }
 
 pub fn setWord(tape: []u8, address: usize, value: isize) AddressError!void {
-    try setWordBytes(tape, address, byteparser.distr(isize, value, globals.soar_lang_endian));
+    try setWordBytes(tape, address, byte_parser.distr(isize, value, globals.soar_lang_endian));
 }
 
 pub fn setWordSized(tape: []u8, address: usize, size: u8, value: isize) AddressError!void {
     if (size > globals.word_size)
         return AddressError.BadAddress;
 
-    std.debug.print("{b}", .{try wordValue(tape, address)});
-
     const and_mask: usize = ~(std.math.pow(usize, 2, 8 * @as(usize, size)) - 1);
     try andWord(tape, address, @bitCast(and_mask));
     try orWord(tape, address, value);
-
-    std.debug.print(" -> {b}\n\r", .{try wordValue(tape, address)});
 }
 
 pub fn setUnsigned(tape: []u8, address: usize, value: usize) AddressError!void {
-    try setWordBytes(tape, address, byteparser.distr(usize, value, globals.soar_lang_endian));
+    try setWordBytes(tape, address, byte_parser.distr(usize, value, globals.soar_lang_endian));
 }
 
 pub fn setFloat(tape: []u8, address: usize, value: float) AddressError!void {
-    try setWordBytes(tape, address, byteparser.distr(isize, @bitCast(value), globals.soar_lang_endian));
+    try setWordBytes(tape, address, byte_parser.distr(isize, @bitCast(value), globals.soar_lang_endian));
 }
 
 pub fn toInt(tape: []u8, address: usize) AddressError!void {

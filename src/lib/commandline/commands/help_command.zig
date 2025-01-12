@@ -1,7 +1,7 @@
 const std = @import("std");
 const ICommand = @import("../ICommand.zig");
-const commandlist = @import("../commandlist.zig");
-const CommandArgsError = @import("../clineerror.zig").CommandArgsError;
+const command_list = @import("../command_list.zig");
+const CommandArgsError = @import("../CLI_error.zig").CommandArgsError;
 
 pub const help_command: ICommand = .{ .name = "help", .description = "prints every existing command along with its brief description", .execute = execute };
 
@@ -18,9 +18,9 @@ fn help() []const u8 {
     const allocator = arena.allocator();
     const output_allocator = std.heap.page_allocator;
 
-    var lines: [commandlist.command_list.len][]const u8 = undefined;
+    var lines: [command_list.command_list.len][]const u8 = undefined;
 
-    for (commandlist.command_list, 0..) |command, index| {
+    for (command_list.command_list, 0..) |command, index| {
         const line = std.fmt.allocPrint(allocator, "\t{s}\t\t{s}\n\r", .{ command.name, command.description orelse "" }) catch return "";
 
         lines[index] = line;

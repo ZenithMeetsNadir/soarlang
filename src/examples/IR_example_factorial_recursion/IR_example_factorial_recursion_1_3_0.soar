@@ -31,12 +31,3 @@ func @_factorial
     SETSZ [_RTADDR] 4 A
     RET
 endfunc
-
-EXIT
-
-int factorial(int x) {
-    if (x == 1)
-        return 1;
-
-    return x * factorial(x - 1);
-}

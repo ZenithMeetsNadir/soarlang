@@ -5,26 +5,44 @@ const SourceObject = @import("../interpreter/SourceObject.zig");
 const FunctionTable = SourceObject.FunctionTable;
 const FunctionTableError = SourceObject.FunctionTableError;
 const LangConfig = @import("../interpreter/LangConfig.zig");
-const byteparser = @import("./byteparser.zig");
-const squashStrBlock = byteparser.squashStrBlock;
+const byte_parser = @import("./byte_parser.zig");
+const squashStrBlock = byte_parser.squashStrBlock;
 
 pub const config_prefix: u8 = '?';
 
 pub fn sepatareLines(source: []const u8) std.mem.SplitIterator(u8, .any) {
-    return std.mem.splitAny(u8, source, "\r\n\r");
+    return std.mem.splitAny(u8, source, "\r\n");
 }
 
 pub const ArgumentIterator = struct {
     line_iter: std.mem.SplitIterator(u8, .any),
+    is_quoted_str: bool = false,
 
-    fn isValid(word: []const u8) bool {
+    fn isValid(self: *ArgumentIterator, word: []const u8) bool {
+        if (word.len > 0 and word[0] == '"' and !self.is_quoted_str) {
+            self.is_quoted_str = true;
+            return false;
+        }
+
         return word.len > 0;
     }
 
     pub fn next(self: *ArgumentIterator) ?[]const u8 {
-        return while (self.line_iter.next()) |word| {
-            if (isValid(word))
-                break word;
+        var start_quote = self.line_iter.index orelse return null;
+        return ret_wh: while (self.line_iter.next()) |word| : (start_quote = self.line_iter.index orelse return null) {
+            if (self.isValid(word)) {
+                break :ret_wh word;
+            } else if (self.is_quoted_str) {
+                var end_quote: usize = start_quote;
+                while (blk: {
+                    end_quote = std.mem.indexOfScalarPos(u8, self.line_iter.buffer, end_quote + 1, '"') orelse break :ret_wh null;
+                    break :blk self.line_iter.buffer[end_quote - 1] == '\\';
+                }) {}
+
+                self.line_iter.index = if (self.line_iter.buffer.len > end_quote + 2) end_quote + 2 else null;
+                self.is_quoted_str = false;
+                break :ret_wh self.line_iter.buffer[start_quote + 1 .. end_quote];
+            }
         } else null;
     }
 
@@ -133,6 +151,10 @@ pub fn tokenize(source: []const u8) LineIterator {
     return LineIterator{ .source_iter = sepatareLines(source) };
 }
 
+pub fn purifyStrLiteral(source: []const u8, allocator: std.mem.Allocator) std.mem.Allocator.Error![]const u8 {
+    try std.mem.replaceOwned(u8, allocator, source, "\\\"", "\"");
+}
+
 pub fn acknowledgeSymbPrefix(str: []const u8, prefix: u8) ?[]const u8 {
     if (str.len <= 1 or str[0] != prefix)
         return null;
@@ -152,7 +174,8 @@ pub fn readLangConfig(instr_iter: *InstructionIterator) LangConfig {
 
                 switch (squashStrBlock(key)) {
                     squashStrBlock("language"), squashStrBlock("lang") => lang_config.language = std.meta.stringToEnum(LangConfig.Language, value) orelse continue,
-                    squashStrBlock("langver") => lang_config.version = value,
+                    squashStrBlock("langver") => lang_config.lang_version = value,
+                    squashStrBlock("exectype") => lang_config.exec_type = std.meta.stringToEnum(LangConfig.ExecType, value) orelse continue,
                     else => continue,
                 }
             }

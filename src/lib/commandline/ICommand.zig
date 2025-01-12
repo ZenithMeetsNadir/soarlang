@@ -1,4 +1,4 @@
-const CommandArgsError = @import("clineerror.zig").CommandArgsError;
+const CommandArgsError = @import("CLI_error.zig").CommandArgsError;
 
 name: []const u8,
 description: ?[]const u8,

@@ -13,6 +13,7 @@ zig-out/
 zig-cache/
 
 # custom testing files
+src/examples/test
 test.wav
 test.txt
 test.soar

@@ -1,8 +1,8 @@
 const std = @import("std");
 const ICommand = @import("ICommand.zig");
-const comandlist = @import("commandlist.zig");
-const CommandAdressingError = @import("clineerror.zig").CommandAdressingError;
-const help_command = @import("commands/helpcommand.zig").help_command;
+const comand_list = @import("command_list.zig");
+const CommandAdressingError = @import("CLI_error.zig").CommandAdressingError;
+const help_command = @import("commands/help_command.zig").help_command;
 
 fn executeCommand(args: []const []const u8) CommandAdressingError![]const u8 {
     if (args.len <= 1)
@@ -31,7 +31,7 @@ pub fn find(comptime T: type, array: []T, predicate: fn (elem: T) bool) ?T {
 }
 
 fn findCommand(name: []const u8) ?ICommand {
-    return for (comandlist.command_list) |command| {
+    return for (comand_list.command_list) |command| {
         if (std.mem.eql(u8, command.name, name)) break command;
     } else null;
 }

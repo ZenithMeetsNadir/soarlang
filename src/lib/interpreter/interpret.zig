@@ -1,7 +1,7 @@
 const std = @import("std");
-const byteparser = @import("../parser/byteparser.zig");
-const IRparser = @import("../parser/IRparser.zig");
-const InstructionIterator = IRparser.InstructionIterator;
+const byte_parser = @import("../parser/byte_parser.zig");
+const IR_parser = @import("../parser/IR_parser.zig");
+const InstructionIterator = IR_parser.InstructionIterator;
 const SourceObject = @import("SourceObject.zig");
 const FunctionGetError = SourceObject.FunctionGetError;
 const instruction = @import("instruction.zig");
@@ -50,9 +50,9 @@ fn unembrace(str: []const u8) []const u8 {
 }
 
 fn resolveSymbol(tape: []const u8, usymbol: []const u8) (ArgumentError || instruction.AddressError)!usize {
-    if (IRparser.acknowledgeSymbPrefix(usymbol, '_')) |symbol| {
-        switch (byteparser.squashStrBlock(symbol)) {
-            byteparser.squashStrBlock("RTADDR") => return try instruction.getReturnAddress(tape),
+    if (IR_parser.acknowledgeSymbPrefix(usymbol, '_')) |symbol| {
+        switch (byte_parser.squashStrBlock(symbol)) {
+            byte_parser.squashStrBlock("RTADDR") => return try instruction.getReturnAddress(tape),
             else => {
                 if (std.mem.eql(u8, symbol[0..3], "ARG")) {
                     const arg_num = std.fmt.parseUnsigned(usize, symbol[3..], 0) catch return ArgumentError.CouldNotParse;
@@ -160,7 +160,7 @@ pub fn resolveFloat(tape: []const u8, float_str: []const u8) (ArgumentError || i
     return flt;
 }
 
-pub fn unwrapArgs(arg_iter: *IRparser.ArgumentIterator, comptime arg_count: usize) InstructionError![arg_count][]const u8 {
+pub fn unwrapArgs(arg_iter: *IR_parser.ArgumentIterator, comptime arg_count: usize) InstructionError![arg_count][]const u8 {
     var args: [arg_count][]const u8 = undefined;
 
     var index: usize = 0;
