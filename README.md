@@ -4,17 +4,19 @@ I should probably mention that this is a free time project, whose fate is determ
 
 # Soar
 
-Soar is supposed to be a pseudo coding language directed towards operating with audio files. You can think of it as a simple audio composition environment entirely lacking all of the UI stuff. So it is up to your fingers and keyboard as opposed to drag-and-dropping chunky audio rectangles. 
+Soar is supposed to be a pseudo coding language directed towards operating with audio files. You can think of it as a simple audio composition environment entirely lacking all of the GUI stuff. So it is up to your fingers and keyboard as opposed to drag-and-dropping chunky audio rectangles. 
 
 Its syntax and use case is vague (I have been keeping that in my head) and so is its future at this point.
 
-## Interpreter
+## Compilation process
 
-A simple command line interpreter is the core of this project. Actually, the project is mainly dedicated to building the interpreter. I mean, figuring out the syntax is fun, but completely useless without a tool to handle it.
+The compilation process takes multiple steps. First, high level language code is fed to compiler (yet to be developed) that translates it to primitive assembly-like language. This language (referred to as `Soar IR`), consisting mainly of imperative instructions, is then a lot easier to interpret.
 
 ### Release
 
-There has not been any major release version yet. However, for those wanting to poke at it, feel free to build it on your own with Zig.
+As of the latest release, only the interpreter (`1.4.0`) is available. To interpret a soar IR file, use the `melodify` command followed by its absolute path.
+
+For those wanting to poke at it, feel free to build it on your own with Zig, as well as check out branch `develop` for the current state of this project.
 
 ## Why?
 
