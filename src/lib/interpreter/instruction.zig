@@ -1,8 +1,8 @@
 const std = @import("std");
 const byte_parser = @import("../parser/byte_parser.zig");
 const IR_parser = @import("../parser/IR_parser.zig");
-const globals = @import("globals.zig");
-const float = globals.float;
+const global = @import("global.zig");
+const float = global.float;
 const Stack = @import("./Stack.zig");
 
 pub const Instruction = enum {
@@ -97,10 +97,12 @@ pub const Instruction = enum {
     // <value>
     /// print word to stderr
     PUT,
-    /// allocate bytes on stak (increment SP by size)
+    /// allocate bytes on stack (increment SP by size)
     RSVSZ,
     /// push word to stack (SET + RESRV)
     PUSH,
+    /// tear down stack
+    POP,
     /// enter following code block if true, jump to else block otherwise
     IF,
     /// loop following code block until false
@@ -193,15 +195,15 @@ pub fn word(tape: []const u8, address: usize) AddressError![]const u8 {
     if (address + @sizeOf(@TypeOf(address)) > tape.len)
         return AddressError.BadAddress;
 
-    return tape[address .. address + globals.word_size];
+    return tape[address .. address + global.word_size];
 }
 
 pub fn wordValue(tape: []const u8, address: usize) AddressError!isize {
-    return byte_parser.assemb(isize, try word(tape, address), globals.soar_lang_endian);
+    return byte_parser.assemb(isize, try word(tape, address), global.soar_lang_endian);
 }
 
 pub fn wordSized(tape: []const u8, address: usize, size: u8) AddressError!isize {
-    if (size > globals.word_size)
+    if (size > global.word_size)
         return AddressError.BadAddress;
 
     const and_mask: isize = @bitCast(std.math.pow(usize, 2, 8 * @as(usize, size)) - 1);
@@ -209,11 +211,11 @@ pub fn wordSized(tape: []const u8, address: usize, size: u8) AddressError!isize 
 }
 
 pub fn wordUnsigned(tape: []const u8, address: usize) AddressError!usize {
-    return byte_parser.assemb(usize, try word(tape, address), globals.soar_lang_endian);
+    return byte_parser.assemb(usize, try word(tape, address), global.soar_lang_endian);
 }
 
 pub fn wordFloat(tape: []const u8, address: usize) AddressError!float {
-    return @bitCast(byte_parser.assemb(isize, try word(tape, address), globals.soar_lang_endian));
+    return @bitCast(byte_parser.assemb(isize, try word(tape, address), global.soar_lang_endian));
 }
 
 pub fn setWordBytes(tape: []u8, address: usize, bytes: [@sizeOf(@TypeOf(address))]u8) AddressError!void {
@@ -236,11 +238,11 @@ pub fn copyBytes(from_tape: []const u8, from_address: usize, to_tape: []u8, to_a
 }
 
 pub fn setWord(tape: []u8, address: usize, value: isize) AddressError!void {
-    try setWordBytes(tape, address, byte_parser.distr(isize, value, globals.soar_lang_endian));
+    try setWordBytes(tape, address, byte_parser.distr(isize, value, global.soar_lang_endian));
 }
 
 pub fn setWordSized(tape: []u8, address: usize, size: u8, value: isize) AddressError!void {
-    if (size > globals.word_size)
+    if (size > global.word_size)
         return AddressError.BadAddress;
 
     const and_mask: usize = ~(std.math.pow(usize, 2, 8 * @as(usize, size)) - 1);
@@ -249,11 +251,11 @@ pub fn setWordSized(tape: []u8, address: usize, size: u8, value: isize) AddressE
 }
 
 pub fn setUnsigned(tape: []u8, address: usize, value: usize) AddressError!void {
-    try setWordBytes(tape, address, byte_parser.distr(usize, value, globals.soar_lang_endian));
+    try setWordBytes(tape, address, byte_parser.distr(usize, value, global.soar_lang_endian));
 }
 
 pub fn setFloat(tape: []u8, address: usize, value: float) AddressError!void {
-    try setWordBytes(tape, address, byte_parser.distr(isize, @bitCast(value), globals.soar_lang_endian));
+    try setWordBytes(tape, address, byte_parser.distr(isize, @bitCast(value), global.soar_lang_endian));
 }
 
 pub fn toInt(tape: []u8, address: usize) AddressError!void {
@@ -314,11 +316,11 @@ pub fn decrementWord(tape: []u8, address: usize) AddressError!void {
 }
 
 pub fn incrementWSize(tape: []u8, address: usize) AddressError!void {
-    try addWord(tape, address, globals.word_size);
+    try addWord(tape, address, global.word_size);
 }
 
 pub fn decrementWSize(tape: []u8, address: usize) AddressError!void {
-    try addWord(tape, address, -globals.word_size);
+    try addWord(tape, address, -global.word_size);
 }
 
 pub fn equal(tape: []u8, address: usize, value1: isize, value2: isize) AddressError!void {
@@ -370,27 +372,17 @@ pub fn pushSized(tape: []u8, size: u8, value: isize) MemoryError!void {
     try reserveSized(tape, size);
 }
 
-pub fn call(tape: []u8, arg_count: isize) MemoryError!void {
-    if (arg_count > globals.num_registers)
-        return MemoryError.NotEnoughMemory;
+pub fn pop(tape: []u8, value: isize) AddressError!void {
+    try subtractWord(tape, Stack.SP, value);
+}
 
+pub fn newFrame(tape: []u8) MemoryError!void {
     const fp_point = wordValue(tape, Stack.FP) catch return MemoryError.NotEnoughMemory;
 
     const sp_point = wordUnsigned(tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
     setUnsigned(tape, Stack.FP, sp_point) catch return MemoryError.NotEnoughMemory;
 
     try push(tape, fp_point);
-
-    var reg_addr: usize = globals.A;
-    var i: usize = 0;
-
-    while (i < arg_count) : ({
-        i += 1;
-        reg_addr += globals.word_size;
-    }) {
-        const reg_val = wordValue(&globals.global_mem, reg_addr) catch return MemoryError.NotEnoughMemory;
-        try push(tape, reg_val);
-    }
 }
 
 pub fn @"return"(tape: []u8) AddressError!void {
@@ -401,6 +393,24 @@ pub fn @"return"(tape: []u8) AddressError!void {
     try setUnsigned(tape, Stack.FP, fp_ret);
 }
 
+pub fn call(tape: []u8, arg_count: isize) MemoryError!void {
+    if (arg_count > global.num_registers)
+        return MemoryError.NotEnoughMemory;
+
+    try newFrame(tape);
+
+    var reg_addr: usize = global.A;
+    var i: usize = 0;
+
+    while (i < arg_count) : ({
+        i += 1;
+        reg_addr += global.word_size;
+    }) {
+        const reg_val = wordValue(&global.global_mem, reg_addr) catch return MemoryError.NotEnoughMemory;
+        try push(tape, reg_val);
+    }
+}
+
 pub fn getReturnAddress(tape: []const u8) AddressError!usize {
     const fp_point = try wordUnsigned(tape, Stack.FP);
     return fp_point + Stack.Properties.return_address_offset;
@@ -408,5 +418,5 @@ pub fn getReturnAddress(tape: []const u8) AddressError!usize {
 
 pub fn getArgAddress(tape: []const u8, arg_num: usize) AddressError!usize {
     const fp_point = try wordUnsigned(tape, Stack.FP);
-    return fp_point + Stack.Properties.first_arg_offset + arg_num * globals.word_size;
+    return fp_point + Stack.Properties.first_arg_offset + arg_num * global.word_size;
 }

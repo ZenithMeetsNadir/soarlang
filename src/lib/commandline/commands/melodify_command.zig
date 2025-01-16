@@ -3,7 +3,7 @@ const ICommand = @import("../ICommand.zig");
 const CommandArgsError = @import("../CLI_error.zig").CommandArgsError;
 const IR_parser = @import("../../parser/IR_parser.zig");
 const flag_parser = @import("../flag_parser.zig");
-const fileops = @import("../../file/fileops.zig");
+const file_ops = @import("../../file/file_ops.zig");
 const interpret = @import("../../interpreter/interpret.zig");
 const InterpretError = interpret.InterpretError;
 const SourceObject = @import("../../interpreter/SourceObject.zig");
@@ -28,9 +28,18 @@ fn execute(args: []const []const u8) CommandArgsError![]const u8 {
 
     const path = args[2];
 
-    const source = fileops.readFile(path, std.heap.page_allocator) catch |err| return @errorName(err);
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer _ = gpa.deinit();
+
+    const source = file_ops.readFile(path, allocator) catch |err| return @errorName(err);
+    defer allocator.free(source);
+
     const stack = Stack{ .stack_tape = &Stack.main_tape };
-    var source_obj = SourceObject.construct(source, stack, std.heap.page_allocator) catch |err| return @errorName(err);
+    var source_obj = SourceObject.construct(source, stack, path, allocator) catch |err| return @errorName(err);
+    defer source_obj.dispose();
+
+    source_obj.createFnTable() catch |err| return @errorName(err);
 
     return configureInterpret(&source_obj) catch |err| return @errorName(err);
 }

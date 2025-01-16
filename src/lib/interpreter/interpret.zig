@@ -3,12 +3,13 @@ const byte_parser = @import("../parser/byte_parser.zig");
 const IR_parser = @import("../parser/IR_parser.zig");
 const InstructionIterator = IR_parser.InstructionIterator;
 const SourceObject = @import("SourceObject.zig");
-const FunctionGetError = SourceObject.FunctionGetError;
+const FunctionTable = @import("../parser/FunctionTable.zig");
+const FunctionGetError = FunctionTable.FunctionGetError;
 const instruction = @import("instruction.zig");
 const AddressError = instruction.AddressError;
 const MemoryError = instruction.MemoryError;
-const globals = @import("globals.zig");
-const float = globals.float;
+const global = @import("global.zig");
+const float = global.float;
 const Stack = @import("./Stack.zig");
 
 const ArgumentError = error{
@@ -91,12 +92,12 @@ fn resolve(tape: *[]const u8, str: []const u8, is_value_resolution: bool) (Argum
                         std.fmt.ParseIntError.Overflow => return ArgumentError.CouldNotParse,
                         std.fmt.ParseIntError.InvalidCharacter => inv_char: {
                             debugPrint(.interpret_proc, "\t\treferencing symbol: {s}\n\r", .{no_offset_str});
-                            const ptr = globals.referenceGlobal(no_offset_str) catch glblref_err: {
-                                break :glblref_err globals.EmbedPtr.nonGlobalPtr(try resolveSymbol(tape.*, no_offset_str));
+                            const ptr = global.referenceGlobal(no_offset_str) catch glblref_err: {
+                                break :glblref_err global.EmbedPtr.nonGlobalPtr(try resolveSymbol(tape.*, no_offset_str));
                             };
                             debugPrint(.interpret_proc, "\t\tresolved symbol - address: {d}\n\r", .{ptr.address});
 
-                            const ptr_tape: []const u8 = if (ptr.is_global) &globals.global_mem else tape.*;
+                            const ptr_tape: []const u8 = if (ptr.is_global) &global.global_mem else tape.*;
 
                             break :inv_char try instruction.wordValue(ptr_tape, ptr.address);
                         },
@@ -108,13 +109,13 @@ fn resolve(tape: *[]const u8, str: []const u8, is_value_resolution: bool) (Argum
                         std.fmt.ParseIntError.Overflow => return ArgumentError.CouldNotParse,
                         std.fmt.ParseIntError.InvalidCharacter => inv_char: {
                             debugPrint(.interpret_proc, "\t\treferencing symbol: {s}\n\r", .{no_offset_str});
-                            const ptr = globals.referenceGlobal(no_offset_str) catch glblref_err: {
-                                break :glblref_err globals.EmbedPtr.nonGlobalPtr(try resolveSymbol(tape.*, no_offset_str));
+                            const ptr = global.referenceGlobal(no_offset_str) catch glblref_err: {
+                                break :glblref_err global.EmbedPtr.nonGlobalPtr(try resolveSymbol(tape.*, no_offset_str));
                             };
                             debugPrint(.interpret_proc, "\t\tresolved symbol - address: {d}\n\r", .{ptr.address});
 
                             if (ptr.is_global) {
-                                tape.* = &globals.global_mem;
+                                tape.* = &global.global_mem;
                                 debugPrint(.interpret_proc, "\t\toverridden tape with global tape\n\r", .{});
                             }
 
@@ -362,6 +363,7 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                 .PUT => std.debug.print("{any}\n", .{value1}),
                 .RSVSZ => try instruction.reserveSized(tape, @intCast(value1)),
                 .PUSH => try instruction.push(tape, value1),
+                .POP => try instruction.pop(tape, value1),
                 .IF => try interpretIf(value1 != 0, instr_iter, source_obj_ref),
                 .WHILE => {
                     while (value1 != 0) : (value1 = try resolveValue(tape, args[0])) {
@@ -435,14 +437,14 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
 }
 
 fn visualizeTape(tape: []const u8, start: usize, end: usize) void {
-    if (start % globals.word_size != 0 or end % globals.word_size != 0)
+    if (start % global.word_size != 0 or end % global.word_size != 0)
         return;
 
     const observed_tape = tape[start..end];
 
     var wsize_index: usize = 0;
-    while (wsize_index < globals.global_mem.len) : (wsize_index += globals.word_size) {
-        const value = instruction.wordValue(&globals.global_mem, wsize_index) catch return;
+    while (wsize_index < global.global_mem.len) : (wsize_index += global.word_size) {
+        const value = instruction.wordValue(&global.global_mem, wsize_index) catch return;
 
         if (value == 0) {
             debugPrint(.visual_stack, "[] ", .{});
@@ -452,7 +454,7 @@ fn visualizeTape(tape: []const u8, start: usize, end: usize) void {
     debugPrint(.visual_stack, "\n\r", .{});
 
     wsize_index = 0;
-    while (wsize_index < observed_tape.len) : (wsize_index += globals.word_size) {
+    while (wsize_index < observed_tape.len) : (wsize_index += global.word_size) {
         const value = instruction.wordValue(tape, wsize_index) catch return;
 
         if (instruction.wordUnsigned(tape, Stack.SP) catch return == wsize_index) {

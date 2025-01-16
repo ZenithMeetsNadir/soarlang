@@ -1,6 +1,6 @@
 const std = @import("std");
 const instruction = @import("../interpreter/instruction.zig");
-const globals = @import("../interpreter/globals.zig");
+const global = @import("../interpreter/global.zig");
 const SourceObject = @import("../interpreter/SourceObject.zig");
 const FunctionTable = SourceObject.FunctionTable;
 const FunctionTableError = SourceObject.FunctionTableError;
@@ -186,29 +186,4 @@ pub fn readLangConfig(instr_iter: *InstructionIterator) LangConfig {
     }
 
     return lang_config;
-}
-
-pub fn createFnTable(line_iter: *LineIterator, allocator: std.mem.Allocator) FunctionTableError!FunctionTable {
-    var func_table = FunctionTable.init(allocator);
-
-    while (line_iter.next()) |line| {
-        var line_mut = line;
-        const instr_name = line_mut.first() orelse continue;
-
-        if (std.mem.eql(u8, instr_name, "func")) {
-            const func_name = line_mut.next() orelse return FunctionTableError.UnnamedFunction;
-
-            if (func_table.get(func_name) != null)
-                return FunctionTableError.AmbiguousName;
-
-            const instr_iter = InstructionIterator.constructFuncBodyIterator(line_iter.*);
-            func_table.putNoClobber(func_name, instr_iter) catch return FunctionTableError.HashMapError;
-        }
-    }
-
-    return func_table;
-}
-
-pub fn destroyFnTable(func_table: FunctionTable) void {
-    func_table.deinit();
 }
