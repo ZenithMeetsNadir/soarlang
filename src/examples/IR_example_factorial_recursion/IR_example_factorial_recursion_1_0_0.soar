@@ -1,0 +1,51 @@
+?lang=soar_IR
+?langver=1.0.0
+
+INIT
+
+SET A SP
+SET F A
+RESRV
+SET B 4
+
+CALL 2 @_factorial
+
+TESTEQL [F] 24
+PUT [F]
+
+func @_factorial
+    SET A FP
+    INCWS A
+    SET B A
+    INCWS B
+
+    IFEQL [B] 1
+        DEREF A
+        SET [A] [B]
+        RET 
+    END
+    ELSE
+        SET A SP
+        RESRV
+        DEREF B
+        DEC B
+
+        CALL 2 @_factorial
+
+        SET A SP
+        DECWS A
+
+        SET B FP
+        ADD B 16
+        DEREF B
+
+        MUL B [A]
+
+        SET A FP
+        INCWS A
+        DEREF A
+        SET [A] B
+
+        RET
+    END
+endfunc

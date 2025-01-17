@@ -1,0 +1,33 @@
+?lang=soar_IR
+?langver=1.3.0
+
+INIT
+
+STLCSZ A 4
+SET F A
+SET B 4
+
+CALL 2 @_factorial
+
+PUTSZ [F] 4
+
+func @_factorial
+    IFEQL _ARG0 1
+        SETSZ [_RTADDR] 4 1
+        RET
+        BREAKFN
+    END
+    
+    PUSHSZ 4 _ARG0
+    STLCSZ A 4
+    SET B _ARG0
+    DEC B
+    
+    CALL 2 @_factorial
+
+    BYTECPY [SP]-8 A 4
+    BYTECPY [SP]-4 B 4
+    MUL A B
+    SETSZ [_RTADDR] 4 A
+    RET
+endfunc
