@@ -14,9 +14,14 @@ pub var main_tape: [defaut_stack_size]u8 = undefined;
 
 pub const SP: usize = 0;
 pub const FP: usize = SP + global.word_size;
+// memory space given to the program
+pub const RAMS: usize = FP + global.word_size;
+
+// static variables start from here (static space)
+pub const SS: usize = RAMS + global.word_size;
 
 // init stack pointer
-pub const SP_init_value = FP + global.word_size;
+pub const SP_init_value = SS + global.word_size;
 
 stack_tape: []u8,
 

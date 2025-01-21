@@ -47,6 +47,8 @@ pub fn referenceGlobal(global: []const u8) GlobalError!EmbedPtr {
     return switch (squashStrBlock(global)) {
         squashStrBlock("SP") => EmbedPtr.nonGlobalPtr(Stack.SP),
         squashStrBlock("FP") => EmbedPtr.nonGlobalPtr(Stack.FP),
+        squashStrBlock("RAMS") => EmbedPtr.nonGlobalPtr(Stack.RAMS),
+        squashStrBlock("SS") => EmbedPtr.nonGlobalPtr(Stack.SS),
         squashStrBlock("A") => EmbedPtr.globalPtr(A),
         squashStrBlock("B") => EmbedPtr.globalPtr(B),
         squashStrBlock("C") => EmbedPtr.globalPtr(C),
