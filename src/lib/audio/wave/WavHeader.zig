@@ -1,7 +1,7 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-const byteparser = @import("../../parser/byteparser.zig");
+const byte_parser = @import("../../parser/byte_parser.zig");
 const WavHeader = @This();
 
 pub const chunk_id_size = 4;
@@ -24,8 +24,8 @@ pub const chunk_id: [chunk_id_size]u8 = "RIFF".*;
 pub const format: [format_size]u8 = "WAVE".*;
 
 pub const subchunk1_id: [subchunk1_id_size]u8 = "fmt ".*;
-pub const subchunk1_size: [subchunk1_size_size]u8 = byteparser.distr(u32, subchunk1_size_value, .little);
-pub const audio_format: [audio_format_size]u8 = byteparser.distr(u16, 1, .little);
+pub const subchunk1_size: [subchunk1_size_size]u8 = byte_parser.distr(u32, subchunk1_size_value, .little);
+pub const audio_format: [audio_format_size]u8 = byte_parser.distr(u16, 1, .little);
 
 pub const subchunk2_id: [subchunk2_id_size]u8 = "data".*;
 
@@ -55,10 +55,10 @@ pub const num_channels_default = 1;
 pub const sample_rate_default = 44100;
 pub const bits_per_sample_default = 16;
 
-header_bytes: [data_offset]u8,
+header_bytes: [data_offset]u8 = undefined,
 
 pub fn construct(num_channels: ?u16, sample_rate: ?u32, bits_per_sample: ?u16) WavHeader {
-    var header: WavHeader = undefined;
+    var header = WavHeader{};
 
     header.write(&chunk_id, chunk_id_offset);
     header.write(&format, format_offset);
@@ -86,65 +86,65 @@ pub fn write(self: *WavHeader, data: []const u8, start_index: usize) void {
 }
 
 pub fn getChunkSize(self: WavHeader) u32 {
-    return byteparser.assemb(u32, self.header_bytes[4 .. 4 + chunk_size_size], .little);
+    return byte_parser.assemb(u32, self.header_bytes[4 .. 4 + chunk_size_size], .little);
 }
 
 pub fn updateChunkSize(self: *WavHeader) void {
-    self.write(&byteparser.distr(u32, self.getSubchunk2Size() + chunk_data_offset, .little), chunk_size_offset);
+    self.write(&byte_parser.distr(u32, self.getSubchunk2Size() + chunk_data_offset, .little), chunk_size_offset);
 }
 
 pub fn getNumChannels(self: WavHeader) u16 {
-    return byteparser.assemb(u16, self.header_bytes[num_channels_offset .. num_channels_offset + num_channels_size], .little);
+    return byte_parser.assemb(u16, self.header_bytes[num_channels_offset .. num_channels_offset + num_channels_size], .little);
 }
 
 pub fn setNumChannels(self: *WavHeader, num_channels: u16) void {
-    self.write(&byteparser.distr(u16, num_channels, .little), num_channels_offset);
+    self.write(&byte_parser.distr(u16, num_channels, .little), num_channels_offset);
     self.updateByteRate();
     self.updateBlockAlign();
 }
 
 pub fn getSampleRate(self: WavHeader) u32 {
-    return byteparser.assemb(u32, self.header_bytes[sample_rate_offset .. sample_rate_offset + sample_rate_size], .little);
+    return byte_parser.assemb(u32, self.header_bytes[sample_rate_offset .. sample_rate_offset + sample_rate_size], .little);
 }
 
 pub fn setSampleRate(self: *WavHeader, sample_rate: u32) void {
-    self.write(&byteparser.distr(u32, sample_rate, .little), sample_rate_offset);
+    self.write(&byte_parser.distr(u32, sample_rate, .little), sample_rate_offset);
     self.updateByteRate();
 }
 
 pub fn getByteRate(self: WavHeader) u32 {
-    return byteparser.assemb(u32, self.header_bytes[byte_rate_offset .. byte_rate_offset + byte_rate_size], .little);
+    return byte_parser.assemb(u32, self.header_bytes[byte_rate_offset .. byte_rate_offset + byte_rate_size], .little);
 }
 
 pub fn updateByteRate(self: *WavHeader) void {
     const byte_rate: u32 = self.getSampleRate() *| self.getBitsPerSample() * self.getNumChannels() / 8;
-    self.write(&byteparser.distr(u32, byte_rate, .little), byte_rate_offset);
+    self.write(&byte_parser.distr(u32, byte_rate, .little), byte_rate_offset);
 }
 
 pub fn getBlockAlign(self: WavHeader) u16 {
-    return byteparser.assemb(u16, self.header_bytes[block_align_offset .. block_align_offset + block_align_size], .little);
+    return byte_parser.assemb(u16, self.header_bytes[block_align_offset .. block_align_offset + block_align_size], .little);
 }
 
 pub fn updateBlockAlign(self: *WavHeader) void {
     const block_align: u16 = self.getBitsPerSample() * self.getNumChannels() / 8;
-    self.write(&byteparser.distr(u16, block_align, .little), block_align_offset);
+    self.write(&byte_parser.distr(u16, block_align, .little), block_align_offset);
 }
 
 pub fn getBitsPerSample(self: WavHeader) u16 {
-    return byteparser.assemb(u16, self.header_bytes[bits_per_sample_offset .. bits_per_sample_offset + bits_per_sample_size], .little);
+    return byte_parser.assemb(u16, self.header_bytes[bits_per_sample_offset .. bits_per_sample_offset + bits_per_sample_size], .little);
 }
 
 pub fn setBitsPerSample(self: *WavHeader, bits_per_sample: u16) void {
-    self.write(&byteparser.distr(u16, bits_per_sample, .little), bits_per_sample_offset);
+    self.write(&byte_parser.distr(u16, bits_per_sample, .little), bits_per_sample_offset);
     self.updateByteRate();
     self.updateBlockAlign();
 }
 
 pub fn getSubchunk2Size(self: WavHeader) u32 {
-    return byteparser.assemb(u32, self.header_bytes[subchunk2_size_offset .. subchunk2_size_offset + subchunk2_size_size], .little);
+    return byte_parser.assemb(u32, self.header_bytes[subchunk2_size_offset .. subchunk2_size_offset + subchunk2_size_size], .little);
 }
 
 pub fn setSubchunk2Size(self: *WavHeader, subchunk2_size: u32) void {
-    self.write(&byteparser.distr(u32, subchunk2_size, .little), subchunk2_size_offset);
+    self.write(&byte_parser.distr(u32, subchunk2_size, .little), subchunk2_size_offset);
     self.updateChunkSize();
 }

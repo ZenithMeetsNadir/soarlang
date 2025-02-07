@@ -4,47 +4,40 @@ const WavHeader = @import("WavHeader.zig");
 const AudioFile = @import("../../file/AudioFile.zig");
 const WavFile = @This();
 
+allocator: std.mem.Allocator,
 path: []const u8,
 header: *WavHeader,
 data: []const u8,
 
-pub fn create(path: []const u8, header: WavHeader, data: []const u8, allocator: std.mem.Allocator) std.mem.Allocator.Error!*WavFile {
-    const file: *WavFile = try allocator.create(WavFile);
-    errdefer allocator.destroy(file);
+pub fn construct(path: []const u8, header: WavHeader, data: []const u8, allocator: std.mem.Allocator) std.mem.Allocator.Error!WavFile {
+    const path_cpy = try allocator.dupe(u8, path);
+    errdefer allocator.free(path_cpy);
 
-    const path_copy = try allocator.alloc(u8, path.len);
-    errdefer allocator.free(path_copy);
-    std.mem.copyForwards(u8, path_copy, path);
-    file.path = path_copy;
+    const header_cpy = try allocator.create(WavHeader);
+    errdefer allocator.destroy(header_cpy);
+    std.mem.copyForwards(u8, &header_cpy.header_bytes, &header.header_bytes);
 
-    file.header = try allocator.create(WavHeader);
-    errdefer allocator.destroy(file.header);
-    std.mem.copyForwards(u8, &file.header.header_bytes, &header.header_bytes);
+    const data_cpy = try allocator.dupe(u8, data);
 
-    const data_copy = try allocator.alloc(u8, data.len);
-    std.mem.copyForwards(u8, data_copy, data);
-    file.data = data_copy;
-
-    return file;
+    return WavFile{ .allocator = allocator, .path = path_cpy, .header = header_cpy, .data = data_cpy };
 }
 
-pub fn dispose(self: *WavFile, create_allocator: std.mem.Allocator) void {
-    create_allocator.free(self.path);
-    create_allocator.destroy(self.header);
-    create_allocator.free(self.data);
+pub fn dispose(self: WavFile) void {
+    self.allocator.free(self.path);
+    self.allocator.destroy(self.header);
+    self.allocator.free(self.data);
 }
 
 pub fn @"export"(self: *const WavFile, allocator: std.mem.Allocator) !void {
     self.header.setSubchunk2Size(@intCast(self.data.len));
 
-    const a_file: *AudioFile = (try AudioFile.fromAnyAudio(self.*, allocator)).?;
-    defer allocator.destroy(a_file);
-    defer a_file.dispose(allocator);
+    const a_file = try AudioFile.fromAnyAudio(self.*, allocator);
+    defer a_file.dispose();
 
     try a_file.save();
 }
 
-pub fn fromAudioFile(a_file: *const AudioFile, allocator: std.mem.Allocator) (std.mem.Allocator.Error || AudioFile.AudioFileError)!*WavFile {
+pub fn fromAudioFile(a_file: *const AudioFile, allocator: std.mem.Allocator) (std.mem.Allocator.Error || AudioFile.AudioFileError)!WavFile {
     if (!std.mem.eql(u8, std.fs.path.extension(a_file.path), ".wav"))
         return AudioFile.AudioFileError.InvalidExtension;
 
@@ -52,7 +45,7 @@ pub fn fromAudioFile(a_file: *const AudioFile, allocator: std.mem.Allocator) (st
     const header = WavHeader{ .header_bytes = header_bytes.* };
     const data = a_file.data[WavHeader.data_offset..];
 
-    const file = try create(a_file.path, header, data, allocator);
+    const file = try construct(a_file.path, header, data, allocator);
 
     return file;
 }

@@ -31,7 +31,7 @@ included_dlls: std.BufSet,
 resources: Resources,
 
 pub fn construct(script_path: []const u8, allocator: std.mem.Allocator) file_ops.ParentDirError!FunctionTable {
-    const working_dir = fs.cwd().openDir(try file_ops.getParentDirPath(script_path), .{}) catch return file_ops.ParentDirError.PathNotFound;
+    const working_dir = try fs.cwd().openDir(try file_ops.getParentDirPath(script_path), .{});
     return FunctionTable{ .allocator = allocator, .func_map = FuncMap.init(allocator), .working_dir = working_dir, .included_dlls = std.BufSet.init(allocator), .resources = Resources.init(allocator) };
 }
 
@@ -48,7 +48,7 @@ pub fn dispose(self: *FunctionTable) void {
 }
 
 pub fn createFnTable(self: *FunctionTable, line_iter: *IR_parser.LineIterator) (DllLinkError || FunctionTableError)!void {
-    try self.fnTableFromIter(line_iter, false);
+    try self.fnTableFromIter(line_iter);
 }
 
 pub fn linkDll(self: *FunctionTable, path: []const u8) (DllLinkError || FunctionTableError)!void {
@@ -57,15 +57,13 @@ pub fn linkDll(self: *FunctionTable, path: []const u8) (DllLinkError || Function
 
     var line_iter = IR_parser.tokenize(source);
     var instr_iter = IR_parser.InstructionIterator.construct(line_iter);
-    if (IR_parser.readLangConfig(&instr_iter).exec_type == .script)
+    if (IR_parser.readLangConfig(&instr_iter).exec_type != .script)
         return DllLinkError.NotADll;
 
-    try self.fnTableFromIter(&line_iter, true);
+    try self.fnTableFromIter(&line_iter);
 }
 
-pub fn fnTableFromIter(self: *FunctionTable, line_iter: *IR_parser.LineIterator, is_dll: bool) (DllLinkError || FunctionTableError)!void {
-    _ = is_dll;
-
+pub fn fnTableFromIter(self: *FunctionTable, line_iter: *IR_parser.LineIterator) (DllLinkError || FunctionTableError)!void {
     while (line_iter.next()) |line| {
         var line_mut = line;
         const instr_name = line_mut.first() orelse continue;
