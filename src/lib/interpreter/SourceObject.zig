@@ -4,9 +4,11 @@ const IR_parser = @import("../parser/IR_parser.zig");
 const Stack = @import("./Stack.zig");
 const LangConfig = @import("./LangConfig.zig");
 const FunctionTable = @import("../parser/FunctionTable.zig");
+const InterpretContext = @import("./InterpretContext.zig");
 
 const SourceObject = @This();
 
+invoke_args: []const []const u8,
 source: []const u8,
 lang_config: LangConfig,
 stack: Stack,
@@ -16,12 +18,13 @@ func_table: FunctionTable,
 path: []const u8,
 debug_enabled: bool = true,
 
-pub fn construct(source: []const u8, stack: Stack, path: []const u8, allocator: std.mem.Allocator) file_ops.ParentDirError!SourceObject {
+pub fn construct(invoke_args: []const []const u8, source: []const u8, path: []const u8, allocator: std.mem.Allocator) (file_ops.ParentDirError || std.mem.Allocator.Error)!SourceObject {
     const line_iter = IR_parser.tokenize(source);
     var instr_iter = IR_parser.InstructionIterator.construct(line_iter);
     const func_table = try FunctionTable.construct(path, allocator);
+    const stack = try Stack.construct(allocator);
 
-    return SourceObject{ .source = source, .lang_config = IR_parser.readLangConfig(&instr_iter), .stack = stack, .line_iter = line_iter, .instr_iter = instr_iter, .func_table = func_table, .path = path };
+    return SourceObject{ .invoke_args = invoke_args, .source = source, .lang_config = IR_parser.readLangConfig(&instr_iter), .stack = stack, .line_iter = line_iter, .instr_iter = instr_iter, .func_table = func_table, .path = path };
 }
 
 pub fn createFnTable(self: *SourceObject) (FunctionTable.DllLinkError || FunctionTable.FunctionTableError)!void {
@@ -30,6 +33,7 @@ pub fn createFnTable(self: *SourceObject) (FunctionTable.DllLinkError || Functio
 
 pub fn dispose(self: *SourceObject) void {
     self.func_table.dispose();
+    self.stack.dispose();
 }
 
 pub fn getFunc(self: SourceObject, func_name: []const u8) FunctionTable.FunctionGetError!IR_parser.InstructionIterator {

@@ -31,7 +31,7 @@ included_dlls: std.BufSet,
 resources: Resources,
 
 pub fn construct(script_path: []const u8, allocator: std.mem.Allocator) file_ops.ParentDirError!FunctionTable {
-    const working_dir = try fs.cwd().openDir(try file_ops.getParentDirPath(script_path), .{});
+    const working_dir = fs.cwd().openDir(try file_ops.getParentDirPath(script_path), .{}) catch return file_ops.ParentDirError.PathNotFound;
     return FunctionTable{ .allocator = allocator, .func_map = FuncMap.init(allocator), .working_dir = working_dir, .included_dlls = std.BufSet.init(allocator), .resources = Resources.init(allocator) };
 }
 

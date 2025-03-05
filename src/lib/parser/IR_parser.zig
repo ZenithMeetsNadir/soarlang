@@ -3,15 +3,19 @@ const instruction = @import("../interpreter/instruction.zig");
 const global = @import("../interpreter/global.zig");
 const SourceObject = @import("../interpreter/SourceObject.zig");
 const FunctionTable = SourceObject.FunctionTable;
-const FunctionTableError = SourceObject.FunctionTableError;
+const FunctionTableError = FunctionTable.FunctionTableError;
 const LangConfig = @import("../interpreter/LangConfig.zig");
 const byte_parser = @import("./byte_parser.zig");
 const squashStrBlock = byte_parser.squashStrBlock;
 
 pub const config_prefix: u8 = '?';
+pub const quote: u8 = '"';
+pub const comment: u8 = ';';
+pub const arg_delim: []const u8 = " \t";
+pub const instr_delim: []const u8 = "\r\n";
 
 pub fn sepatareLines(source: []const u8) std.mem.SplitIterator(u8, .any) {
-    return std.mem.splitAny(u8, source, "\r\n");
+    return std.mem.splitAny(u8, source, instr_delim);
 }
 
 pub const ArgumentIterator = struct {
@@ -19,7 +23,7 @@ pub const ArgumentIterator = struct {
     is_quoted_str: bool = false,
 
     fn isValid(self: *ArgumentIterator, word: []const u8) bool {
-        if (word.len > 0 and word[0] == '"' and !self.is_quoted_str) {
+        if (word.len > 0 and word[0] == quote and !self.is_quoted_str) {
             self.is_quoted_str = true;
             return false;
         }
@@ -35,7 +39,7 @@ pub const ArgumentIterator = struct {
             } else if (self.is_quoted_str) {
                 var end_quote: usize = start_quote;
                 while (blk: {
-                    end_quote = std.mem.indexOfScalarPos(u8, self.line_iter.buffer, end_quote + 1, '"') orelse break :ret_wh null;
+                    end_quote = std.mem.indexOfScalarPos(u8, self.line_iter.buffer, end_quote + 1, quote) orelse break :ret_wh null;
                     break :blk self.line_iter.buffer[end_quote - 1] == '\\';
                 }) {}
 
@@ -141,10 +145,10 @@ pub const LineIterator = struct {
 };
 
 pub fn splitLine(line: []const u8) ArgumentIterator {
-    var line_iter = std.mem.splitScalar(u8, line, ';');
+    var line_iter = std.mem.splitScalar(u8, line, comment);
     const wo_comments = line_iter.first();
 
-    return ArgumentIterator{ .line_iter = std.mem.splitAny(u8, wo_comments, " \t") };
+    return ArgumentIterator{ .line_iter = std.mem.splitAny(u8, wo_comments, arg_delim) };
 }
 
 pub fn tokenize(source: []const u8) LineIterator {

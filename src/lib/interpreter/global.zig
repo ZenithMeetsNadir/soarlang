@@ -3,6 +3,8 @@ const byte_parser = @import("../parser/byte_parser.zig");
 const squashStrBlock = byte_parser.squashStrBlock;
 const Stack = @import("./Stack.zig");
 
+pub const LabelHashMap = std.StringHashMap(ScopePtr);
+
 pub const GlobalError = error{
     CannotReference,
 };
@@ -30,31 +32,33 @@ pub const global_mem_size = num_registers * word_size;
 
 pub var global_mem: [global_mem_size]u8 = undefined;
 
-pub const EmbedPtr = struct {
+pub const ScopePtr = struct {
     address: usize,
     is_global: bool,
 
-    pub fn globalPtr(address: usize) EmbedPtr {
-        return EmbedPtr{ .address = address, .is_global = true };
+    pub fn globalPtr(address: usize) ScopePtr {
+        return ScopePtr{ .address = address, .is_global = true };
     }
 
-    pub fn nonGlobalPtr(address: usize) EmbedPtr {
-        return EmbedPtr{ .address = address, .is_global = false };
+    pub fn nonGlobalPtr(address: usize) ScopePtr {
+        return ScopePtr{ .address = address, .is_global = false };
     }
 };
 
-pub fn referenceGlobal(global: []const u8) GlobalError!EmbedPtr {
+pub fn referenceGlobal(global: []const u8) GlobalError!ScopePtr {
     return switch (squashStrBlock(global)) {
-        squashStrBlock("SP") => EmbedPtr.nonGlobalPtr(Stack.SP),
-        squashStrBlock("FP") => EmbedPtr.nonGlobalPtr(Stack.FP),
-        squashStrBlock("RAMS") => EmbedPtr.nonGlobalPtr(Stack.RAMS),
-        squashStrBlock("SS") => EmbedPtr.nonGlobalPtr(Stack.SS),
-        squashStrBlock("A") => EmbedPtr.globalPtr(A),
-        squashStrBlock("B") => EmbedPtr.globalPtr(B),
-        squashStrBlock("C") => EmbedPtr.globalPtr(C),
-        squashStrBlock("D") => EmbedPtr.globalPtr(D),
-        squashStrBlock("E") => EmbedPtr.globalPtr(E),
-        squashStrBlock("F") => EmbedPtr.globalPtr(F),
+        squashStrBlock("SP") => ScopePtr.nonGlobalPtr(Stack.SP),
+        squashStrBlock("FP") => ScopePtr.nonGlobalPtr(Stack.FP),
+        squashStrBlock("RAMS") => ScopePtr.nonGlobalPtr(Stack.RAMS),
+        squashStrBlock("SS") => ScopePtr.nonGlobalPtr(Stack.SS),
+        squashStrBlock("A") => ScopePtr.globalPtr(A),
+        squashStrBlock("B") => ScopePtr.globalPtr(B),
+        squashStrBlock("C") => ScopePtr.globalPtr(C),
+        squashStrBlock("D") => ScopePtr.globalPtr(D),
+        squashStrBlock("E") => ScopePtr.globalPtr(E),
+        squashStrBlock("F") => ScopePtr.globalPtr(F),
         else => GlobalError.CannotReference,
     };
 }
+
+pub var globalLabels: LabelHashMap = LabelHashMap.init(std.heap.page_allocator);

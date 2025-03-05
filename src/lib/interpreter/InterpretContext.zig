@@ -12,6 +12,8 @@ const global = @import("global.zig");
 const float = global.float;
 const Stack = @import("./Stack.zig");
 
+const InterpretContext = @This();
+
 const ArgumentError = error{
     CouldNotParse,
 };
@@ -30,17 +32,24 @@ const ExecutionInterruptionError = error{
     BreakWhileLoop,
 };
 
-pub const InterpretError = AddressError || MemoryError || ExecutionInterruptionError || InstructionError || ArgumentError || FunctionGetError;
+const LabelError = error{
+    LabelNotFound,
+    DuplicateLabel,
+    HashMapInternalError,
+};
+
+pub const InterpretError = AddressError || MemoryError || ExecutionInterruptionError || InstructionError || ArgumentError || FunctionGetError || LabelError;
 
 const DebugMode = enum { interpret_proc, visual_stack };
 
-pub var debug_interpret_proc: bool = false;
-pub var debug_visual_stack: bool = false;
+source_obj: *SourceObject,
+debug_interpret_proc: bool = false,
+debug_visual_stack: bool = false,
 
-fn debugPrint(mode: DebugMode, comptime fmt: []const u8, args: anytype) void {
+fn debugPrint(self: InterpretContext, mode: DebugMode, comptime fmt: []const u8, args: anytype) void {
     switch (mode) {
-        .interpret_proc => if (!debug_interpret_proc) return,
-        .visual_stack => if (!debug_visual_stack) return,
+        .interpret_proc => if (!self.debug_interpret_proc) return,
+        .visual_stack => if (!self.debug_visual_stack) return,
     }
 
     std.debug.print(fmt, args);
@@ -50,35 +59,39 @@ fn unembrace(str: []const u8) []const u8 {
     return str[1 .. str.len - 1];
 }
 
-fn resolveSymbol(tape: []const u8, usymbol: []const u8) (ArgumentError || instruction.AddressError)!usize {
-    if (IR_parser.acknowledgeSymbPrefix(usymbol, '_')) |symbol| {
-        switch (byte_parser.squashStrBlock(symbol)) {
+fn resolveSymbol(self: InterpretContext, tape: []const u8, symbol: []const u8) (ArgumentError || instruction.AddressError || LabelError)!usize {
+    if (IR_parser.acknowledgeSymbPrefix(symbol, '_')) |pre_symb| {
+        switch (byte_parser.squashStrBlock(pre_symb)) {
+            // predefined symbols
             byte_parser.squashStrBlock("RTADDR") => return try instruction.getReturnAddress(tape),
             else => {
-                if (std.mem.eql(u8, symbol[0..3], "ARG")) {
-                    const arg_num = std.fmt.parseUnsigned(usize, symbol[3..], 0) catch return ArgumentError.CouldNotParse;
+                // predefined symbols with arguments
+                if (std.mem.eql(u8, pre_symb[0..3], "ARG")) {
+                    const arg_num = std.fmt.parseUnsigned(usize, pre_symb[3..], 0) catch return ArgumentError.CouldNotParse;
                     return try instruction.getArgAddress(tape, arg_num);
                 }
             },
         }
     }
 
-    return ArgumentError.CouldNotParse;
+    // user defined labels local to the current stack
+    const label = self.source_obj.stack.localLabels.get(symbol) orelse return LabelError.LabelNotFound;
+    return label.address;
 }
 
-fn resolve(tape: *[]const u8, str: []const u8, is_value_resolution: bool) (ArgumentError || instruction.AddressError)!isize {
+fn resolve(self: InterpretContext, tape: *[]const u8, str: []const u8, is_value_resolution: bool) (ArgumentError || instruction.AddressError || LabelError)!isize {
     var value: isize = undefined;
 
     if (str[0] == '[' and str[str.len - 1] == ']') {
         const orig_tape = tape.*;
 
-        value = try resolve(tape, unembrace(str), is_value_resolution);
-        debugPrint(.interpret_proc, "\t\tvalue before dereference: {d}\n\r", .{value});
+        value = try resolve(self, tape, unembrace(str), is_value_resolution);
+        debugPrint(self, .interpret_proc, "\t\tvalue before dereference: {d}\n\r", .{value});
         value = try instruction.wordValue(tape.*, @bitCast(value));
-        debugPrint(.interpret_proc, "\t\tvalue after dereference: {d}\n\r", .{value});
+        debugPrint(self, .interpret_proc, "\t\tvalue after dereference: {d}\n\r", .{value});
 
         tape.* = orig_tape;
-        debugPrint(.interpret_proc, "\t\toverridden tape with original tape\n\r", .{});
+        debugPrint(self, .interpret_proc, "\t\toverridden tape with original tape\n\r", .{});
     } else {
         var no_offset = std.mem.splitAny(u8, str, "+-");
 
@@ -91,11 +104,11 @@ fn resolve(tape: *[]const u8, str: []const u8, is_value_resolution: bool) (Argum
                     break :blk switch (err) {
                         std.fmt.ParseIntError.Overflow => return ArgumentError.CouldNotParse,
                         std.fmt.ParseIntError.InvalidCharacter => inv_char: {
-                            debugPrint(.interpret_proc, "\t\treferencing symbol: {s}\n\r", .{no_offset_str});
+                            debugPrint(self, .interpret_proc, "\t\treferencing symbol: {s}\n\r", .{no_offset_str});
                             const ptr = global.referenceGlobal(no_offset_str) catch glblref_err: {
-                                break :glblref_err global.EmbedPtr.nonGlobalPtr(try resolveSymbol(tape.*, no_offset_str));
+                                break :glblref_err global.ScopePtr.nonGlobalPtr(try resolveSymbol(self, tape.*, no_offset_str));
                             };
-                            debugPrint(.interpret_proc, "\t\tresolved symbol - address: {d}\n\r", .{ptr.address});
+                            debugPrint(self, .interpret_proc, "\t\tresolved symbol - address: {d}\n\r", .{ptr.address});
 
                             const ptr_tape: []const u8 = if (ptr.is_global) &global.global_mem else tape.*;
 
@@ -108,15 +121,15 @@ fn resolve(tape: *[]const u8, str: []const u8, is_value_resolution: bool) (Argum
                     break :blk switch (err) {
                         std.fmt.ParseIntError.Overflow => return ArgumentError.CouldNotParse,
                         std.fmt.ParseIntError.InvalidCharacter => inv_char: {
-                            debugPrint(.interpret_proc, "\t\treferencing symbol: {s}\n\r", .{no_offset_str});
+                            debugPrint(self, .interpret_proc, "\t\treferencing symbol: {s}\n\r", .{no_offset_str});
                             const ptr = global.referenceGlobal(no_offset_str) catch glblref_err: {
-                                break :glblref_err global.EmbedPtr.nonGlobalPtr(try resolveSymbol(tape.*, no_offset_str));
+                                break :glblref_err global.ScopePtr.nonGlobalPtr(try resolveSymbol(self, tape.*, no_offset_str));
                             };
-                            debugPrint(.interpret_proc, "\t\tresolved symbol - address: {d}\n\r", .{ptr.address});
+                            debugPrint(self, .interpret_proc, "\t\tresolved symbol - address: {d}\n\r", .{ptr.address});
 
                             if (ptr.is_global) {
                                 tape.* = &global.global_mem;
-                                debugPrint(.interpret_proc, "\t\toverridden tape with global tape\n\r", .{});
+                                debugPrint(self, .interpret_proc, "\t\toverridden tape with global tape\n\r", .{});
                             }
 
                             break :inv_char ptr.address;
@@ -125,38 +138,38 @@ fn resolve(tape: *[]const u8, str: []const u8, is_value_resolution: bool) (Argum
                 });
             }
         } else {
-            value = try resolve(tape, no_offset_str, is_value_resolution);
-            debugPrint(.interpret_proc, "\t\tvalue: {d}\n\r", .{value});
+            value = try resolve(self, tape, no_offset_str, is_value_resolution);
+            debugPrint(self, .interpret_proc, "\t\tvalue: {d}\n\r", .{value});
 
             if (offset_str != null) {
                 value += std.fmt.parseInt(isize, str[no_offset_str.len..], 0) catch 0;
-                debugPrint(.interpret_proc, "\t\tvalue shifted by offset: {d}\n\r", .{value});
+                debugPrint(self, .interpret_proc, "\t\tvalue shifted by offset: {d}\n\r", .{value});
             }
         }
     }
 
-    debugPrint(.interpret_proc, "\t\tresolved value: {d}\n\r", .{value});
+    debugPrint(self, .interpret_proc, "\t\tresolved value: {d}\n\r", .{value});
     return value;
 }
 
-pub fn resolveValue(tape: []const u8, val_str: []const u8) (ArgumentError || instruction.AddressError)!isize {
+pub fn resolveValue(self: InterpretContext, tape: []const u8, val_str: []const u8) (ArgumentError || instruction.AddressError || LabelError)!isize {
     var tape_cpy = tape;
-    return try resolve(&tape_cpy, val_str, true);
+    return try resolve(self, &tape_cpy, val_str, true);
 }
-pub fn resolveAddress(tape: *[]const u8, addr_str: []const u8) (ArgumentError || instruction.AddressError)!usize {
-    const address: usize = @bitCast(try resolve(tape, addr_str, false));
-    debugPrint(.interpret_proc, "\t\tresolved address: {d}\n\r", .{address});
+pub fn resolveAddress(self: InterpretContext, tape: *[]const u8, addr_str: []const u8) (ArgumentError || instruction.AddressError || LabelError)!usize {
+    const address: usize = @bitCast(try resolve(self, tape, addr_str, false));
+    debugPrint(self, .interpret_proc, "\t\tresolved address: {d}\n\r", .{address});
     return address;
 }
 
-pub fn resolveFloat(tape: []const u8, float_str: []const u8) (ArgumentError || instruction.AddressError)!float {
+pub fn resolveFloat(self: InterpretContext, tape: []const u8, float_str: []const u8) (ArgumentError || instruction.AddressError || LabelError)!float {
     if (float_str.len == 0)
         return ArgumentError.CouldNotParse;
 
     var tape_cpy = tape;
-    const flt: float = std.fmt.parseFloat(float, float_str) catch @bitCast(try resolve(&tape_cpy, float_str, true));
+    const flt: float = std.fmt.parseFloat(float, float_str) catch @bitCast(try resolve(self, &tape_cpy, float_str, true));
 
-    debugPrint(.interpret_proc, "\t\tresolved float: {d}\n\r", .{flt});
+    debugPrint(self, .interpret_proc, "\t\tresolved float: {d}\n\r", .{flt});
 
     return flt;
 }
@@ -205,18 +218,18 @@ pub fn breakCodeBlock(instr_iter: *InstructionIterator) void {
         _ = instr_iter.continueCodeBlockIterator();
 }
 
-pub fn interpretCodeBlock(instr_iter: *InstructionIterator, source_obj_ref: *const SourceObject) InterpretError!void {
+pub fn interpretCodeBlock(self: InterpretContext, instr_iter: *InstructionIterator) InterpretError!void {
     const code_block_iter = instr_iter.code_block;
 
-    try interpret(instr_iter.continueCodeBlockIterator(), source_obj_ref);
+    try interpret(self, instr_iter.continueCodeBlockIterator());
 
     if (!code_block_iter)
         _ = instr_iter.continueInstructionIterator();
 }
 
-pub fn interpretIf(condition: bool, instr_iter: *InstructionIterator, source_obj_ref: *const SourceObject) InterpretError!void {
+pub fn interpretIf(self: InterpretContext, condition: bool, instr_iter: *InstructionIterator) InterpretError!void {
     if (condition) {
-        try interpretCodeBlock(instr_iter, source_obj_ref);
+        try interpretCodeBlock(self, instr_iter);
 
         const arg_iter = instr_iter.peek() orelse return;
         if (std.mem.eql(u8, arg_iter.peekInstrName() orelse return, @tagName(instruction.Instruction.ELSE)))
@@ -224,40 +237,49 @@ pub fn interpretIf(condition: bool, instr_iter: *InstructionIterator, source_obj
     } else breakCodeBlock(instr_iter);
 }
 
-pub fn callFunc(func_instr_iter: *InstructionIterator, source_obj_ref: *const SourceObject) InterpretError!void {
-    interpret(func_instr_iter, source_obj_ref) catch |err| switch (err) {
-        ExecutionInterruptionError.FunctionReturned => {},
+pub fn callFunc(self: InterpretContext, func_instr_iter: *InstructionIterator) InterpretError!void {
+    interpret(self, func_instr_iter) catch |err| switch (err) {
+        ExecutionInterruptionError.FunctionReturned => return,
         else => return err,
     };
 }
 
-pub fn interpretSourceObj(source_obj: *SourceObject) InterpretError!void {
-    try interpret(&source_obj.instr_iter, source_obj);
-}
-
-pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const SourceObject) InterpretError!void {
-    const tape = source_obj_ref.stack.stack_tape;
+pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) InterpretError!void {
+    const tape = self.source_obj.stack.stack_tape;
 
     while (instr_iter.next()) |arg_iter| {
         var arg_iter_mut = arg_iter;
         const instr_name = arg_iter_mut.first() orelse continue;
         const instr = instruction.Instruction.fromString(instr_name) orelse continue;
-        debugPrint(.interpret_proc, "\n\r<instruction: {s}>\n\r", .{@tagName(instr)});
+        debugPrint(self, .interpret_proc, "\n\r<instruction: {s}>\n\r", .{@tagName(instr)});
 
         if (instruction.Instruction.noArgs(instr)) {
             switch (instr) {
                 .INIT => try instruction.initTape(tape),
                 .RESRV => try instruction.reserve(tape),
-                .ELSE => try interpretCodeBlock(instr_iter, source_obj_ref),
+                .LABEL => {
+                    const args = try unwrapArgs(&arg_iter_mut, 1);
+                    const label_name = args[0];
+                    debugPrint(self, .interpret_proc, "\t<arg1: {s}>\n\r", .{label_name});
+
+                    const sp_point = try instruction.wordUnsigned(tape, Stack.SP);
+
+                    if (self.source_obj.stack.localLabels.get(label_name) != null)
+                        return LabelError.DuplicateLabel;
+
+                    self.source_obj.stack.localLabels.putNoClobber(label_name, global.ScopePtr.nonGlobalPtr(sp_point)) catch return LabelError.HashMapInternalError;
+                    debugPrint(self, .interpret_proc, "\t\tcreated label: {s}; value: {d}\n\r", .{ label_name, sp_point });
+                },
+                .ELSE => try interpretCodeBlock(self, instr_iter),
                 .END, .ENDWHILE => {},
                 .CALLRAW => {
                     const args = try unwrapArgs(&arg_iter_mut, 1);
                     const func_name = args[0];
-                    debugPrint(.interpret_proc, "\t<arg1: {s}>\n\r", .{func_name});
+                    debugPrint(self, .interpret_proc, "\t<arg1: {s}>\n\r", .{func_name});
 
-                    var func = try source_obj_ref.getFunc(func_name);
-                    debugPrint(.interpret_proc, "\t\tcalling: {s}\n\r", .{func_name});
-                    try callFunc(&func, source_obj_ref);
+                    var func = try self.source_obj.getFunc(func_name);
+                    debugPrint(self, .interpret_proc, "\t\tcalling: {s}\n\r", .{func_name});
+                    try callFunc(self, &func);
                 },
                 .BREAK => breakCodeBlock(instr_iter),
                 .BREAKWH => return ExecutionInterruptionError.BreakWhileLoop,
@@ -268,10 +290,10 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
             }
         } else if (instruction.Instruction.aArg(instr)) {
             var args = try unwrapArgs(&arg_iter_mut, 1);
-            debugPrint(.interpret_proc, "\t<arg1: {s}>\n\r", .{args[0]});
+            debugPrint(self, .interpret_proc, "\t<arg1: {s}>\n\r", .{args[0]});
 
             var tape1 = tape;
-            const address1 = try resolveAddress(&tape1, args[0]);
+            const address1 = try resolveAddress(self, &tape1, args[0]);
 
             switch (instr) {
                 .STALLOC => try instruction.stackAlloc(tape1, tape, address1),
@@ -287,17 +309,17 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                 else => {
                     if (instruction.Instruction.aaArg(instr)) {
                         args = try unwrapArgs(&arg_iter_mut, 1);
-                        debugPrint(.interpret_proc, "\t<arg2: {s}>\n\r", .{args[0]});
+                        debugPrint(self, .interpret_proc, "\t<arg2: {s}>\n\r", .{args[0]});
 
                         var tape2 = tape;
-                        const address2 = try resolveAddress(&tape2, args[0]);
+                        const address2 = try resolveAddress(self, &tape2, args[0]);
 
                         switch (instr) {
                             else => {
                                 args = try unwrapArgs(&arg_iter_mut, 1);
-                                debugPrint(.interpret_proc, "\t<arg3: {s}>\n\r", .{args[0]});
+                                debugPrint(self, .interpret_proc, "\t<arg3: {s}>\n\r", .{args[0]});
 
-                                const value3 = try resolveValue(tape, args[0]);
+                                const value3 = try resolveValue(self, tape, args[0]);
 
                                 switch (instr) {
                                     .BYTECPY => try instruction.copyBytes(tape1, address1, tape2, address2, @intCast(value3)),
@@ -308,9 +330,9 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                     }
                     if (instruction.Instruction.avArg(instr)) {
                         args = try unwrapArgs(&arg_iter_mut, 1);
-                        debugPrint(.interpret_proc, "\t<arg2: {s}>\n\r", .{args[0]});
+                        debugPrint(self, .interpret_proc, "\t<arg2: {s}>\n\r", .{args[0]});
 
-                        const value2 = try resolveValue(tape, args[0]);
+                        const value2 = try resolveValue(self, tape, args[0]);
 
                         switch (instr) {
                             .SET => try instruction.setWord(tape1, address1, value2),
@@ -326,9 +348,9 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                             else => {
                                 if (instruction.Instruction.avvArg(instr)) {
                                     args = try unwrapArgs(&arg_iter_mut, 1);
-                                    debugPrint(.interpret_proc, "\t<arg3: {s}>\n\r", .{args[0]});
+                                    debugPrint(self, .interpret_proc, "\t<arg3: {s}>\n\r", .{args[0]});
 
-                                    const value3 = try resolveValue(tape, args[0]);
+                                    const value3 = try resolveValue(self, tape, args[0]);
 
                                     switch (instr) {
                                         .SETSZ => try instruction.setWordSized(tape1, address1, @intCast(value2), value3),
@@ -342,9 +364,9 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
                         }
                     } else if (instruction.Instruction.afArg(instr)) {
                         args = try unwrapArgs(&arg_iter_mut, 1);
-                        debugPrint(.interpret_proc, "\t<arg2: {s}>\n\r", .{args[0]});
+                        debugPrint(self, .interpret_proc, "\t<arg2: {s}>\n\r", .{args[0]});
 
-                        const flt2 = try resolveFloat(tape, args[0]);
+                        const flt2 = try resolveFloat(self, tape, args[0]);
 
                         switch (instr) {
                             .SETF => try instruction.setFloat(tape1, address1, flt2),
@@ -355,58 +377,58 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
             }
         } else if (instruction.Instruction.vArg(instr)) {
             var args = try unwrapArgs(&arg_iter_mut, 1);
-            debugPrint(.interpret_proc, "\t<arg1: {s}>\n\r", .{args[0]});
+            debugPrint(self, .interpret_proc, "\t<arg1: {s}>\n\r", .{args[0]});
 
-            var value1 = try resolveValue(tape, args[0]);
+            var value1 = try resolveValue(self, tape, args[0]);
 
             switch (instr) {
                 .PUT => std.debug.print("{any}\n", .{value1}),
                 .RSVSZ => try instruction.reserveSized(tape, @intCast(value1)),
                 .PUSH => try instruction.push(tape, value1),
                 .POP => try instruction.pop(tape, value1),
-                .IF => try interpretIf(value1 != 0, instr_iter, source_obj_ref),
+                .IF => try interpretIf(self, value1 != 0, instr_iter),
                 .WHILE => {
-                    while (value1 != 0) : (value1 = try resolveValue(tape, args[0])) {
+                    while (value1 != 0) : (value1 = try resolveValue(self, tape, args[0])) {
                         var code_block_start = instr_iter.*;
-                        interpretCodeBlock(&code_block_start, source_obj_ref) catch |err| switch (err) {
+                        interpretCodeBlock(self, &code_block_start) catch |err| switch (err) {
                             ExecutionInterruptionError.BreakWhileLoop => break,
                             else => {},
                         };
 
-                        debugPrint(.interpret_proc, "\n\r<while loop condition>\n\r", .{});
-                        debugPrint(.interpret_proc, "\t<arg1: {s}>\n\r", .{args[0]});
+                        debugPrint(self, .interpret_proc, "\n\r<while loop condition>\n\r", .{});
+                        debugPrint(self, .interpret_proc, "\t<arg1: {s}>\n\r", .{args[0]});
                     }
 
                     breakCodeBlock(instr_iter);
                 },
                 .CALL => {
                     try instruction.call(tape, value1);
-                    debugPrint(.visual_stack, "<function call>\n\r", .{});
+                    debugPrint(self, .visual_stack, "<function call>\n\r", .{});
 
                     args = try unwrapArgs(&arg_iter_mut, 1);
                     const func_name = args[0];
-                    debugPrint(.interpret_proc, "\t<arg2: {s}>\n\r", .{func_name});
+                    debugPrint(self, .interpret_proc, "\t<arg2: {s}>\n\r", .{func_name});
 
-                    var func = try source_obj_ref.getFunc(func_name);
-                    debugPrint(.interpret_proc, "\t\tcalling: {s}\n\r", .{func_name});
-                    try callFunc(&func, source_obj_ref);
+                    var func = try self.source_obj.getFunc(func_name);
+                    debugPrint(self, .interpret_proc, "\t\tcalling: {s}\n\r", .{func_name});
+                    try callFunc(self, &func);
                 },
                 else => {
                     if (instruction.Instruction.vvArg(instr)) {
                         args = try unwrapArgs(&arg_iter_mut, 1);
-                        debugPrint(.interpret_proc, "\t<arg2: {s}>\n\r", .{args[0]});
+                        debugPrint(self, .interpret_proc, "\t<arg2: {s}>\n\r", .{args[0]});
 
-                        const value2 = try resolveValue(tape, args[0]);
+                        const value2 = try resolveValue(self, tape, args[0]);
 
                         switch (instr) {
-                            .IFEQL => try interpretIf(value1 == value2, instr_iter, source_obj_ref),
-                            .IFSMLR => try interpretIf(value1 < value2, instr_iter, source_obj_ref),
-                            .IFGRTR => try interpretIf(value1 > value2, instr_iter, source_obj_ref),
+                            .IFEQL => try interpretIf(self, value1 == value2, instr_iter),
+                            .IFSMLR => try interpretIf(self, value1 < value2, instr_iter),
+                            .IFGRTR => try interpretIf(self, value1 > value2, instr_iter),
                             .PUSHSZ => try instruction.pushSized(tape, @intCast(value1), value2),
                             .TESTEQL => {
-                                if (source_obj_ref.debug_enabled) {
+                                if (self.source_obj.debug_enabled) {
                                     std.debug.assert(value1 == value2);
-                                    debugPrint(.interpret_proc, "testeql instruction check passed\n\r\n\r", .{});
+                                    debugPrint(self, .interpret_proc, "testeql instruction check passed\n\r\n\r", .{});
                                 }
                             },
                             else => unreachable,
@@ -416,27 +438,27 @@ pub fn interpret(instr_iter: *InstructionIterator, source_obj_ref: *const Source
             }
         } else if (instruction.Instruction.fArg(instr)) {
             const args = try unwrapArgs(&arg_iter_mut, 1);
-            debugPrint(.interpret_proc, "\t<arg1: {s}>\n\r", .{args[0]});
+            debugPrint(self, .interpret_proc, "\t<arg1: {s}>\n\r", .{args[0]});
 
-            const flt1 = try resolveFloat(tape, args[0]);
+            const flt1 = try resolveFloat(self, tape, args[0]);
 
             switch (instr) {
-                .PUTF => debugPrint(.interpret_proc, "{d}\n\r", .{flt1}),
+                .PUTF => debugPrint(self, .interpret_proc, "{d}\n\r", .{flt1}),
                 else => unreachable,
             }
         }
 
-        visualizeTape(tape, 0, 256);
-        debugPrint(.visual_stack, " <- ", .{});
+        visualizeTape(self, tape, 0, 256);
+        debugPrint(self, .visual_stack, " <- ", .{});
         var arg_iter_debug = arg_iter;
         while (arg_iter_debug.next()) |arg| {
-            debugPrint(.visual_stack, "{s} ", .{arg});
+            debugPrint(self, .visual_stack, "{s} ", .{arg});
         }
-        debugPrint(.visual_stack, "\n\r", .{});
+        debugPrint(self, .visual_stack, "\n\r", .{});
     }
 }
 
-fn visualizeTape(tape: []const u8, start: usize, end: usize) void {
+fn visualizeTape(self: InterpretContext, tape: []const u8, start: usize, end: usize) void {
     if (start % global.word_size != 0 or end % global.word_size != 0)
         return;
 
@@ -447,22 +469,22 @@ fn visualizeTape(tape: []const u8, start: usize, end: usize) void {
         const value = instruction.wordValue(&global.global_mem, wsize_index) catch return;
 
         if (value == 0) {
-            debugPrint(.visual_stack, "[] ", .{});
-        } else debugPrint(.visual_stack, "{d} ", .{value});
+            debugPrint(self, .visual_stack, "[] ", .{});
+        } else debugPrint(self, .visual_stack, "{d} ", .{value});
     }
 
-    debugPrint(.visual_stack, "\n\r", .{});
+    debugPrint(self, .visual_stack, "\n\r", .{});
 
     wsize_index = 0;
     while (wsize_index < observed_tape.len) : (wsize_index += global.word_size) {
         const value = instruction.wordValue(tape, wsize_index) catch return;
 
         if (instruction.wordUnsigned(tape, Stack.SP) catch return == wsize_index) {
-            debugPrint(.visual_stack, "$>{d} ", .{value});
+            debugPrint(self, .visual_stack, "$>{d} ", .{value});
         } else if (instruction.wordUnsigned(tape, Stack.FP) catch return == wsize_index) {
-            debugPrint(.visual_stack, "%>{d} ", .{value});
+            debugPrint(self, .visual_stack, "%>{d} ", .{value});
         } else if (value == 0) {
-            debugPrint(.visual_stack, "[] ", .{});
-        } else debugPrint(.visual_stack, "{d} ", .{value});
+            debugPrint(self, .visual_stack, "[] ", .{});
+        } else debugPrint(self, .visual_stack, "{d} ", .{value});
     }
 }

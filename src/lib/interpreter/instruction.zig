@@ -11,6 +11,8 @@ pub const Instruction = enum {
     INIT,
     /// allocate word on stack (increment SP by word size)
     RESRV,
+    /// declare a label
+    LABEL,
     /// else code block
     ELSE,
     /// end of code block
