@@ -1,33 +1,33 @@
 ?lang=soar_IR
 ?langver=1.3.0 ; no modifiations as of 1.4.0
 
-INIT
+init
 
-STLCSZ A 4
-SET F A
-SET B 4
+stlcsz a 4
+set f a
+set b 4
 
-CALL 2 @_factorial
+call 2 @_factorial
 
-PUTSZ [F] 4
+putsz [f] 4
 
 func @_factorial
-    IFEQL _ARG0 1
-        SETSZ [_RTADDR] 4 1
-        RET
-        BREAKFN
-    END
+    ifeql _arg0 1
+        setsz [_rtaddr] 4 1
+        ret
+        breakfn
+    end
     
-    PUSHSZ 4 _ARG0
-    STLCSZ A 4
-    SET B _ARG0
-    DEC B
+    pushsz 4 _arg0
+    stlcsz a 4
+    set b _arg0
+    dec b
     
-    CALL 2 @_factorial
+    call 2 @_factorial
 
-    BYTECPY [SP]-8 A 4
-    BYTECPY [SP]-4 B 4
-    MUL A B
-    SETSZ [_RTADDR] 4 A
-    RET
+    bytecpy [sp]-8 a 4
+    bytecpy [sp]-4 b 4
+    mul a b
+    setsz [_rtaddr] 4 a
+    ret
 endfunc

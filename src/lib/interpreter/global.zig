@@ -47,16 +47,16 @@ pub const ScopePtr = struct {
 
 pub fn referenceGlobal(global: []const u8) GlobalError!ScopePtr {
     return switch (squashStrBlock(global)) {
-        squashStrBlock("SP") => ScopePtr.nonGlobalPtr(Stack.SP),
-        squashStrBlock("FP") => ScopePtr.nonGlobalPtr(Stack.FP),
-        squashStrBlock("RAMS") => ScopePtr.nonGlobalPtr(Stack.RAMS),
-        squashStrBlock("SS") => ScopePtr.nonGlobalPtr(Stack.SS),
-        squashStrBlock("A") => ScopePtr.globalPtr(A),
-        squashStrBlock("B") => ScopePtr.globalPtr(B),
-        squashStrBlock("C") => ScopePtr.globalPtr(C),
-        squashStrBlock("D") => ScopePtr.globalPtr(D),
-        squashStrBlock("E") => ScopePtr.globalPtr(E),
-        squashStrBlock("F") => ScopePtr.globalPtr(F),
+        squashStrBlock("sp") => ScopePtr.nonGlobalPtr(Stack.SP),
+        squashStrBlock("fp") => ScopePtr.nonGlobalPtr(Stack.FP),
+        squashStrBlock("rams") => ScopePtr.nonGlobalPtr(Stack.RAMS),
+        squashStrBlock("ss") => ScopePtr.nonGlobalPtr(Stack.SS),
+        squashStrBlock("a") => ScopePtr.globalPtr(A),
+        squashStrBlock("b") => ScopePtr.globalPtr(B),
+        squashStrBlock("c") => ScopePtr.globalPtr(C),
+        squashStrBlock("d") => ScopePtr.globalPtr(D),
+        squashStrBlock("e") => ScopePtr.globalPtr(E),
+        squashStrBlock("f") => ScopePtr.globalPtr(F),
         else => GlobalError.CannotReference,
     };
 }

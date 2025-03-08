@@ -1,51 +1,51 @@
 ?lang=soar_IR
 ?langver=1.0.0
 
-INIT
+init
 
-SET A SP
-SET F A
-RESRV
-SET B 4
+set a sp
+set f a
+resrv
+set b 4
 
-CALL 2 @_factorial
+call 2 @_factorial
 
-TESTEQL [F] 24
-PUT [F]
+testeql [f] 24
+put [f]
 
 func @_factorial
-    SET A FP
-    INCWS A
-    SET B A
-    INCWS B
+    set a fp
+    incws a
+    set b a
+    incws b
 
-    IFEQL [B] 1
-        DEREF A
-        SET [A] [B]
-        RET 
-    END
-    ELSE
-        SET A SP
-        RESRV
-        DEREF B
-        DEC B
+    ifeql [b] 1
+        deref a
+        set [a] [b]
+        ret
+    end
+    else
+        set a sp
+        resrv
+        deref b
+        dec b
 
-        CALL 2 @_factorial
+        call 2 @_factorial
 
-        SET A SP
-        DECWS A
+        set a sp
+        decws a
 
-        SET B FP
-        ADD B 16
-        DEREF B
+        set b fp
+        add b 16
+        deref b
 
-        MUL B [A]
+        mul b [a]
 
-        SET A FP
-        INCWS A
-        DEREF A
-        SET [A] B
+        set a fp
+        incws a
+        deref a
+        set [a] b
 
-        RET
-    END
+        ret
+    end
 endfunc

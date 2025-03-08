@@ -1,31 +1,31 @@
 ?lang=soar_IR
 ?langver=1.1.0
 
-INIT
+init
 
-STALLOC A
-SET F A 
-SET B 4
+stlc a
+set f a 
+set b 4
 
-CALL 2 @_factorial
+call 2 @_factorial
 
-PUT [F]
+put [f]
 
 func @_factorial
-    IFEQL [FP+16] 1
-        SET [[FP]+8] 1
-        RET
-        BREAKFN
-    END
+    ifeql [fp+16] 1
+        set [[fp]+8] 1
+        ret
+        breakfn
+    end
     
-    PUSH [FP+16]
-    STALLOC A 
-    SET B [FP+16]
-    DEC B
+    push [fp+16]
+    stlc a 
+    set b [fp+16]
+    dec b
     
-    CALL 2 @_factorial
+    call 2 @_factorial
 
-    MUL [SP]-16 [SP-8]
-    SET [[FP]+8] [SP-16]
-    RET
+    mul [sp]-16 [sp-8]
+    set [[fp]+8] [sp-16]
+    ret
 endfunc

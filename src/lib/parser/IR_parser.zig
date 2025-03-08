@@ -13,6 +13,7 @@ pub const quote: u8 = '"';
 pub const comment: u8 = ';';
 pub const arg_delim: []const u8 = " \t";
 pub const instr_delim: []const u8 = "\r\n";
+pub const predef_symb_prefix: u8 = '_';
 
 pub fn sepatareLines(source: []const u8) std.mem.SplitIterator(u8, .any) {
     return std.mem.splitAny(u8, source, instr_delim);
@@ -100,7 +101,7 @@ pub const InstructionIterator = struct {
             if (self.code_block) {
                 if (instruction.Instruction.fromString(instr_name)) |instr| {
                     switch (instr) {
-                        .END, .ENDWHILE => break null,
+                        .end, .endwhile => break null,
                         else => {},
                     }
                 }

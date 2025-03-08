@@ -1,31 +1,32 @@
 ?lang=soar_IR
-?langver=1.2.0
+?langver=1.6s.0
 
 init
 
-stlc a
-set f a 
+label result
+
+stlc%4 a
 set b 4
 
 call 2 @_factorial
 
-put [f]
+put%4 result
 
 func @_factorial
     ifeql _arg0 1
-        set [_rtaddr] 1
+        set%4 [_rtaddr] 1
         ret
         breakfn
     end
     
-    push _arg0
-    stlc a 
+    push%4 _arg0
+    stlc%4 a
     set b _arg0
     dec b
     
     call 2 @_factorial
 
-    mul [sp]-16 [sp-8]
-    set [_rtaddr] [sp-16]
+    mul%4 [sp]-8 [sp-4]
+    set%4 [_rtaddr] [sp-8]
     ret
 endfunc

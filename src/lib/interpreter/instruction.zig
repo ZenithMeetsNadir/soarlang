@@ -8,125 +8,127 @@ const Stack = @import("./Stack.zig");
 pub const Instruction = enum {
     // no args
     /// initialise SP
-    INIT,
+    init,
     /// allocate word on stack (increment SP by word size)
-    RESRV,
+    resrv,
     /// declare a label
-    LABEL,
+    label,
     /// else code block
-    ELSE,
+    @"else",
     /// end of code block
-    END,
+    end,
     /// end of a while loop
-    ENDWHILE,
+    endwhile,
     /// break from a code block
-    BREAK,
+    @"break",
     /// break from a while loop
-    BREAKWH,
+    breakwh,
     /// call a function inside the current stack frame
-    CALLRAW,
+    callraw,
     /// break from a function
-    BREAKFN,
+    breakfn,
     /// tear down the current stack frame
-    RET,
+    ret,
     /// exit program execution
-    EXIT,
+    exit,
 
     // <address>
     /// allocate word on stack and store its address
-    STALLOC,
+    stlc,
     /// cast float to int
-    CAST,
+    cast,
     /// cast int to float
-    CASTF,
+    castf,
     /// convert word to boolean
-    BOOL,
+    bool,
     /// bitwise negate word
-    NOT,
+    not,
     /// increment word
-    INC,
+    inc,
     /// decrementc word
-    DEC,
+    dec,
     /// increment by word size
-    INCWS,
+    incws,
     /// decrement by word size
-    DECWS,
+    decws,
     /// dereference word
-    DEREF,
+    deref,
 
     // <address> <address>
 
     // <address> <address> <value>
-    /// copy arbitrary number of byte from address to address
-    BYTECPY,
+    /// copy arbitrary number of bytes from address to address
+    bytecpy,
 
     // <address> <value>
     /// set word at address
-    SET,
+    set,
     /// allocate bytes on stack and store the address
-    STLCSZ,
+    stlcsz,
     /// bitwise and word
-    AND,
+    @"and",
     /// bitwise or word
-    OR,
-    /// print int to stderr
-    PUTSZ,
+    @"or",
+    /// print bytes int to stderr
+    putsz,
     /// add to word at address
-    ADD,
+    add,
     /// subtract from word at address
-    SUB,
+    sub,
     /// multiply word at address
-    MUL,
+    mul,
     /// divide word at address
-    DIV,
+    div,
     /// word modulus division at adress
-    MOD,
+    mod,
 
     // <address> <value> <value>
     /// set bytes at address
-    SETSZ,
+    setsz,
     /// determine whether words are equal
-    EQL,
+    eql,
     /// determine whether word1 is smaller than word2
-    SMLR,
+    smlr,
     /// determine whether word1 is greater than word2
-    GRTR,
+    grtr,
 
     // <address> <float>
     /// set float at address
-    SETF,
+    setf,
 
     // <value>
     /// print word to stderr
-    PUT,
+    put,
+    /// print word to stderr in hex
+    putx,
     /// allocate bytes on stack (increment SP by size)
-    RSVSZ,
+    rsvsz,
     /// push word to stack (SET + RESRV)
-    PUSH,
+    push,
     /// tear down stack
-    POP,
-    /// enter following code block if true, jump to else block otherwise
-    IF,
-    /// loop following code block until false
-    WHILE,
+    pop,
+    /// enter following code block if true (nonzero), jump to else block otherwise
+    @"if",
+    /// loop following code block until zero
+    @"while",
     /// call a function and create a new stack frame for it, passing values in registers A-F as arguments, the first one being the return address of this function
-    CALL,
+    call,
 
     // <value> <value>
     /// enter following code block if equal words, jump to else block otherwise
-    IFEQL,
+    ifeql,
     /// enter following code block if word1 is smaller that word2, jump to else block otherwise
-    IFSMLR,
+    ifsmlr,
     /// enter following code block if word1 is greater that word2, jump to else block otherwise
-    IFGRTR,
+    ifgrtr,
     /// push bytes to stack (SET + RSVSZ)
-    PUSHSZ,
+    pushsz,
     /// for testing purposes
-    TESTEQL,
+    testeql,
 
     // <float>
     /// print float to console
-    PUTF,
+    putf,
 
     pub fn fromString(instr_name: []const u8) ?Instruction {
         return std.meta.stringToEnum(Instruction, instr_name);
@@ -138,48 +140,48 @@ pub const Instruction = enum {
     }
 
     pub fn noArgs(instr: Instruction) bool {
-        return Instruction.inRange(instr, .INIT, .EXIT);
+        return Instruction.inRange(instr, .init, .exit);
     }
 
     pub fn aArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .STALLOC, .SETF);
+        return Instruction.inRange(instr, .stlc, .setf);
     }
 
     pub fn aaArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .BYTECPY, .BYTECPY);
+        return Instruction.inRange(instr, .bytecpy, .bytecpy);
     }
 
     pub fn aavArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .BYTECPY, .BYTECPY);
+        return Instruction.inRange(instr, .bytecpy, .bytecpy);
     }
 
     pub fn avArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .SET, .GRTR);
+        return Instruction.inRange(instr, .set, .grtr);
     }
 
     pub fn avvArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .SETSZ, .GRTR);
+        return Instruction.inRange(instr, .setsz, .grtr);
     }
 
     pub fn afArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .SETF, .SETF);
+        return Instruction.inRange(instr, .setf, .setf);
     }
 
     pub fn vArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .PUT, .TESTEQL);
+        return Instruction.inRange(instr, .put, .testeql);
     }
 
     pub fn vvArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .IFEQL, .TESTEQL);
+        return Instruction.inRange(instr, .ifeql, .testeql);
     }
 
     pub fn fArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .PUTF, .PUTF);
+        return Instruction.inRange(instr, .putf, .putf);
     }
 
     pub fn beginsCodeBlock(instr: Instruction) bool {
         return switch (instr) {
-            .IF, .IFEQL, .ELSE, .WHILE => true,
+            .@"if", .ifeql, .@"else", .@"while" => true,
             else => false,
         };
     }
@@ -208,7 +210,7 @@ pub fn wordSized(tape: []const u8, address: usize, size: u8) AddressError!isize 
     if (size > global.word_size)
         return AddressError.BadAddress;
 
-    const and_mask: isize = @bitCast(std.math.pow(usize, 2, 8 * @as(usize, size)) - 1);
+    const and_mask: isize = @bitCast(~@as(usize, 0) >> @intCast(8 * (global.word_size - size)));
     return try wordValue(tape, address) & and_mask;
 }
 
@@ -247,7 +249,7 @@ pub fn setWordSized(tape: []u8, address: usize, size: u8, value: isize) AddressE
     if (size > global.word_size)
         return AddressError.BadAddress;
 
-    const and_mask: usize = ~(std.math.pow(usize, 2, 8 * @as(usize, size)) - 1);
+    const and_mask: usize = ~@as(usize, 0) << @intCast(8 * size);
     try andWord(tape, address, @bitCast(and_mask));
     try orWord(tape, address, value);
 }
@@ -279,6 +281,7 @@ pub fn negateWord(tape: []u8, address: usize) AddressError!void {
 pub fn initTape(tape: []u8) AddressError!void {
     try setUnsigned(tape, Stack.SP, Stack.SP_init_value);
     try setUnsigned(tape, Stack.FP, Stack.SP_init_value);
+    try setUnsigned(tape, Stack.RAMS, tape.len);
 }
 
 pub fn andWord(tape: []u8, address: usize, value: isize) AddressError!void {
