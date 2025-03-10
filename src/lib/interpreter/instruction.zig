@@ -70,6 +70,8 @@ pub const Instruction = enum {
     /// bitwise or word
     @"or",
     /// print bytes int to stderr
+    ///
+    /// deprecated: use `put%{size}` instead
     putsz,
     /// add to word at address
     add,
@@ -84,13 +86,9 @@ pub const Instruction = enum {
 
     // <address> <value> <value>
     /// set bytes at address
+    ///
+    /// deprecated: use `set%{size}` instead
     setsz,
-    /// determine whether words are equal
-    eql,
-    /// determine whether word1 is smaller than word2
-    smlr,
-    /// determine whether word1 is greater than word2
-    grtr,
 
     // <address> <float>
     /// set float at address
@@ -117,12 +115,32 @@ pub const Instruction = enum {
     // <value> <value>
     /// enter following code block if equal words, jump to else block otherwise
     ifeql,
+    /// enter following code block if not equal words, jump to else block otherwise
+    ifnoeq,
     /// enter following code block if word1 is smaller that word2, jump to else block otherwise
     ifsmlr,
     /// enter following code block if word1 is greater that word2, jump to else block otherwise
     ifgrtr,
+    /// enter following code block if word1 is smaller or equal that word2, jump to else block otherwise
+    ifsmeq,
+    /// enter following code block if word1 is greater or equal that word2, jump to else block otherwise
+    ifgreq,
     /// push bytes to stack (SET + RSVSZ)
+    ///
+    /// deprecated: use `push%{size}` instead
     pushsz,
+    /// determine whether words are equal; set f register
+    eql,
+    /// determine whether words are not equal; set f register
+    noeq,
+    /// determine whether word1 is smaller than word2; set e register
+    smlr,
+    /// determine whether word1 is greater than word2; set e register
+    grtr,
+    /// determine whether word1 is smaller or equal than word2; set d register
+    smeq,
+    /// determine whether word1 is greater or equal than word2; set d register
+    greq,
     /// for testing purposes
     testeql,
 
@@ -156,11 +174,11 @@ pub const Instruction = enum {
     }
 
     pub fn avArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .set, .grtr);
+        return Instruction.inRange(instr, .set, .setsz);
     }
 
     pub fn avvArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .setsz, .grtr);
+        return Instruction.inRange(instr, .setsz, .setsz);
     }
 
     pub fn afArg(instr: Instruction) bool {
@@ -195,7 +213,7 @@ pub const MemoryError = error{
     NotEnoughMemory,
 };
 
-pub fn word(tape: []const u8, address: usize) AddressError![]const u8 {
+pub fn wordBytes(tape: []const u8, address: usize) AddressError![]const u8 {
     if (address + @sizeOf(@TypeOf(address)) > tape.len)
         return AddressError.BadAddress;
 
@@ -203,7 +221,7 @@ pub fn word(tape: []const u8, address: usize) AddressError![]const u8 {
 }
 
 pub fn wordValue(tape: []const u8, address: usize) AddressError!isize {
-    return byte_parser.assemb(isize, try word(tape, address), global.soar_lang_endian);
+    return byte_parser.assemb(isize, try wordBytes(tape, address), global.soar_lang_endian);
 }
 
 pub fn wordSized(tape: []const u8, address: usize, size: u8) AddressError!isize {
@@ -214,12 +232,16 @@ pub fn wordSized(tape: []const u8, address: usize, size: u8) AddressError!isize 
     return try wordValue(tape, address) & and_mask;
 }
 
+pub fn word(tape: []const u8, address: usize, size: ?u8) AddressError!isize {
+    return if (size == null) try wordValue(tape, address) else try wordSized(tape, address, size.?);
+}
+
 pub fn wordUnsigned(tape: []const u8, address: usize) AddressError!usize {
-    return byte_parser.assemb(usize, try word(tape, address), global.soar_lang_endian);
+    return byte_parser.assemb(usize, try wordBytes(tape, address), global.soar_lang_endian);
 }
 
 pub fn wordFloat(tape: []const u8, address: usize) AddressError!float {
-    return @bitCast(byte_parser.assemb(isize, try word(tape, address), global.soar_lang_endian));
+    return @bitCast(byte_parser.assemb(isize, try wordBytes(tape, address), global.soar_lang_endian));
 }
 
 pub fn setWordBytes(tape: []u8, address: usize, bytes: [@sizeOf(@TypeOf(address))]u8) AddressError!void {
@@ -236,8 +258,8 @@ pub fn copyBytes(from_tape: []const u8, from_address: usize, to_tape: []u8, to_a
         return AddressError.BadAddress;
 
     const bytes = from_tape[from_address .. from_address + num_bytes];
-    for (bytes, to_address..) |byte, index| {
-        to_tape[index] = byte;
+    for (bytes, 0..) |byte, index| {
+        to_tape[to_address + index] = byte;
     }
 }
 
@@ -245,13 +267,19 @@ pub fn setWord(tape: []u8, address: usize, value: isize) AddressError!void {
     try setWordBytes(tape, address, byte_parser.distr(isize, value, global.soar_lang_endian));
 }
 
-pub fn setWordSized(tape: []u8, address: usize, size: u8, value: isize) AddressError!void {
+pub fn setSized(tape: []u8, address: usize, value: isize, size: u8) AddressError!void {
     if (size > global.word_size)
         return AddressError.BadAddress;
 
     const and_mask: usize = ~@as(usize, 0) << @intCast(8 * size);
-    try andWord(tape, address, @bitCast(and_mask));
-    try orWord(tape, address, value);
+    try andWord(tape, address, @bitCast(and_mask), null);
+    try orWord(tape, address, value, null);
+}
+
+pub fn set(tape: []u8, address: usize, value: isize, size: ?u8) AddressError!void {
+    if (size == null) {
+        try setWord(tape, address, value);
+    } else try setSized(tape, address, value, size.?);
 }
 
 pub fn setUnsigned(tape: []u8, address: usize, value: usize) AddressError!void {
@@ -270,74 +298,87 @@ pub fn toFloat(tape: []u8, address: usize) AddressError!void {
     try setFloat(tape, address, @floatFromInt(try wordValue(tape, address)));
 }
 
-pub fn toBool(tape: []u8, address: usize) AddressError!void {
-    try setWord(tape, address, @intFromBool(try wordValue(tape, address) != 0));
+pub fn toBool(tape: []u8, address: usize, size: ?u8) AddressError!void {
+    try set(tape, address, @intFromBool(try word(tape, address, size) != 0), size);
 }
 
-pub fn negateWord(tape: []u8, address: usize) AddressError!void {
-    try setWord(tape, address, ~(try wordValue(tape, address)));
+pub fn negateWord(tape: []u8, address: usize, size: ?u8) AddressError!void {
+    try set(tape, address, ~(try word(tape, address, size)), size);
 }
 
 pub fn initTape(tape: []u8) AddressError!void {
     try setUnsigned(tape, Stack.SP, Stack.SP_init_value);
     try setUnsigned(tape, Stack.FP, Stack.SP_init_value);
     try setUnsigned(tape, Stack.RAMS, tape.len);
+    try setUnsigned(tape, Stack.SS, Stack.SP_init_value);
 }
 
-pub fn andWord(tape: []u8, address: usize, value: isize) AddressError!void {
-    try setWord(tape, address, try wordValue(tape, address) & value);
+pub fn andWord(tape: []u8, address: usize, value: isize, size: ?u8) AddressError!void {
+    try set(tape, address, try word(tape, address, size) & value, size);
 }
 
-pub fn orWord(tape: []u8, address: usize, value: isize) AddressError!void {
-    try setWord(tape, address, try wordValue(tape, address) | value);
+pub fn orWord(tape: []u8, address: usize, value: isize, size: ?u8) AddressError!void {
+    try set(tape, address, try word(tape, address, size) | value, size);
 }
 
-pub fn addWord(tape: []u8, address: usize, value: isize) AddressError!void {
-    try setWord(tape, address, try wordValue(tape, address) +% value);
+pub fn addWord(tape: []u8, address: usize, value: isize, size: ?u8) AddressError!void {
+    try set(tape, address, try word(tape, address, size) +% value, size);
 }
 
-pub fn subtractWord(tape: []u8, address: usize, value: isize) AddressError!void {
-    try addWord(tape, address, -value);
+pub fn subtractWord(tape: []u8, address: usize, value: isize, size: ?u8) AddressError!void {
+    try addWord(tape, address, -value, size);
 }
 
-pub fn multiplyWord(tape: []u8, address: usize, value: isize) AddressError!void {
-    try setWord(tape, address, try wordValue(tape, address) *% value);
+pub fn multiplyWord(tape: []u8, address: usize, value: isize, size: ?u8) AddressError!void {
+    try set(tape, address, try word(tape, address, size) *% value, size);
 }
 
-pub fn divideWord(tape: []u8, address: usize, value: isize) AddressError!void {
-    try setWord(tape, address, @divExact(try wordValue(tape, address), value));
+pub fn divideWord(tape: []u8, address: usize, value: isize, size: ?u8) AddressError!void {
+    try set(tape, address, std.math.divExact(isize, try word(tape, address, size), value) catch return AddressError.BadAddress, size);
 }
 
-pub fn modWord(tape: []u8, address: usize, value: isize) AddressError!void {
-    try setWord(tape, address, @mod(try wordValue(tape, address), value));
+pub fn modWord(tape: []u8, address: usize, value: isize, size: ?u8) AddressError!void {
+    try set(tape, address, @mod(try word(tape, address, size), value), size);
 }
 
-pub fn incrementWord(tape: []u8, address: usize) AddressError!void {
-    try addWord(tape, address, 1);
+pub fn incrementWord(tape: []u8, address: usize, size: ?u8) AddressError!void {
+    try addWord(tape, address, 1, size);
 }
 
-pub fn decrementWord(tape: []u8, address: usize) AddressError!void {
-    try addWord(tape, address, -1);
+pub fn decrementWord(tape: []u8, address: usize, size: ?u8) AddressError!void {
+    try addWord(tape, address, -1, size);
 }
 
-pub fn incrementWSize(tape: []u8, address: usize) AddressError!void {
-    try addWord(tape, address, global.word_size);
+pub fn incrementWSize(tape: []u8, address: usize, size: ?u8) AddressError!void {
+    try addWord(tape, address, global.word_size, size);
 }
 
-pub fn decrementWSize(tape: []u8, address: usize) AddressError!void {
-    try addWord(tape, address, -global.word_size);
+pub fn decrementWSize(tape: []u8, address: usize, size: ?u8) AddressError!void {
+    try addWord(tape, address, -global.word_size, size);
 }
 
-pub fn equal(tape: []u8, address: usize, value1: isize, value2: isize) AddressError!void {
-    try setWord(tape, address, @intFromBool(value1 == value2));
+pub fn equal(tape: []u8, value1: isize, value2: isize, size: ?u8) AddressError!void {
+    try set(tape, global.F, @intFromBool(value1 == value2), size);
 }
 
-pub fn smaller(tape: []u8, address: usize, value1: isize, value2: isize) AddressError!void {
-    try setWord(tape, address, @intFromBool(value1 < value2));
+pub fn notEqual(tape: []u8, value1: isize, value2: isize, size: ?u8) AddressError!void {
+    try set(tape, global.F, @intFromBool(value1 != value2), size);
 }
 
-pub fn greater(tape: []u8, address: usize, value1: isize, value2: isize) AddressError!void {
-    try setWord(tape, address, @intFromBool(value1 > value2));
+pub fn smaller(tape: []u8, value1: isize, value2: isize, size: ?u8) AddressError!void {
+    try set(tape, global.E, @intFromBool(value1 < value2), size);
+}
+
+pub fn smallerOrEqual(tape: []u8, value1: isize, value2: isize, size: ?u8) AddressError!void {
+    try set(tape, global.E, @intFromBool(value1 <= value2), size);
+}
+
+pub fn greater(tape: []u8, value1: isize, value2: isize, size: ?u8) AddressError!void {
+    try set(tape, global.D, @intFromBool(value1 > value2), size);
+}
+
+pub fn greaterOrEqual(tape: []u8, value1: isize, value2: isize, size: ?u8) AddressError!void {
+    try set(tape, global.D, @intFromBool(value1 >= value2), size);
 }
 
 pub fn dereferenceWord(tape: []u8, stack_tape: []const u8, address: usize) AddressError!void {
@@ -346,11 +387,11 @@ pub fn dereferenceWord(tape: []u8, stack_tape: []const u8, address: usize) Addre
 }
 
 pub fn reserve(tape: []u8) MemoryError!void {
-    incrementWSize(tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
+    incrementWSize(tape, Stack.SP, null) catch return MemoryError.NotEnoughMemory;
 }
 
-pub fn reserveSized(tape: []u8, size: u8) MemoryError!void {
-    addWord(tape, Stack.SP, @as(isize, size)) catch return MemoryError.NotEnoughMemory;
+pub fn reserveSized(tape: []u8, value: usize) MemoryError!void {
+    addWord(tape, Stack.SP, @bitCast(value), null) catch return MemoryError.NotEnoughMemory;
 }
 
 pub fn stackAlloc(tape: []u8, stack_tape: []u8, address: usize) MemoryError!void {
@@ -359,26 +400,26 @@ pub fn stackAlloc(tape: []u8, stack_tape: []u8, address: usize) MemoryError!void
     try reserve(stack_tape);
 }
 
-pub fn stackAllocSized(tape: []u8, stack_tape: []u8, address: usize, size: u8) MemoryError!void {
+pub fn stackAllocSized(tape: []u8, stack_tape: []u8, address: usize, value: usize) MemoryError!void {
     const sp_point = wordUnsigned(stack_tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
     setUnsigned(tape, address, sp_point) catch return MemoryError.NotEnoughMemory;
-    try reserveSized(stack_tape, size);
+    try reserveSized(stack_tape, value);
 }
 
-pub fn push(tape: []u8, value: isize) MemoryError!void {
+pub fn push(tape: []u8, value: isize, size: ?u8) MemoryError!void {
     const sp_point = wordUnsigned(tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
-    setWord(tape, sp_point, value) catch return MemoryError.NotEnoughMemory;
-    try reserve(tape);
+    set(tape, sp_point, value, size) catch return MemoryError.NotEnoughMemory;
+    try reserveSized(tape, @as(usize, size orelse global.word_size));
 }
 
-pub fn pushSized(tape: []u8, size: u8, value: isize) MemoryError!void {
+pub fn pushSized(tape: []u8, value: isize, size: u8) MemoryError!void {
     const sp_point = wordUnsigned(tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
-    setWordSized(tape, sp_point, size, value) catch return MemoryError.NotEnoughMemory;
+    setSized(tape, sp_point, value, size) catch return MemoryError.NotEnoughMemory;
     try reserveSized(tape, size);
 }
 
 pub fn pop(tape: []u8, value: isize) AddressError!void {
-    try subtractWord(tape, Stack.SP, value);
+    try subtractWord(tape, Stack.SP, value, null);
 }
 
 pub fn newFrame(tape: []u8) MemoryError!void {
@@ -387,7 +428,7 @@ pub fn newFrame(tape: []u8) MemoryError!void {
     const sp_point = wordUnsigned(tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
     setUnsigned(tape, Stack.FP, sp_point) catch return MemoryError.NotEnoughMemory;
 
-    try push(tape, fp_point);
+    try push(tape, fp_point, null);
 }
 
 pub fn @"return"(tape: []u8) AddressError!void {
@@ -412,7 +453,7 @@ pub fn call(tape: []u8, arg_count: isize) MemoryError!void {
         reg_addr += global.word_size;
     }) {
         const reg_val = wordValue(&global.global_mem, reg_addr) catch return MemoryError.NotEnoughMemory;
-        try push(tape, reg_val);
+        try push(tape, reg_val, null);
     }
 }
 

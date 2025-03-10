@@ -4,8 +4,8 @@
 init
 
 label result
+stlcsz a 4¨
 
-stlc%4 a
 set b 4
 
 call 2 @_factorial
@@ -13,15 +13,15 @@ call 2 @_factorial
 put%4 result
 
 func @_factorial
-    ifeql _arg0 1
+    ifeql _arg1 1
         set%4 [_rtaddr] 1
         ret
         breakfn
     end
     
-    push%4 _arg0
-    stlc%4 a
-    set b _arg0
+    push%4 _arg1
+    stlcsz a 4
+    set b _arg1
     dec b
     
     call 2 @_factorial

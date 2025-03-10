@@ -10,7 +10,7 @@ soar_IR language versioning follows these rules:
     dereference recursion
 
 1.2.0
-    reference helper symbols _RTADDR _ARGx
+    reference helper symbols _rtaddr _arg{x}
 
     FIX: 
         broken STALLOC instruction
@@ -25,8 +25,10 @@ soar_IR language versioning follows these rules:
     labels - user defined symbols
 
 1.6.0 - in dev
+    everything in lowercase
     rework of non-wordsize instructions
+    deprecated instructions: setsz; pushsz; putsz;
 
 TODO:
-    only register functions with usage that come from an included dlls
-    write heap allocator in soar_IR 
+    only register functions with usage that come from an included dll
+    write heap allocator in soar_IR

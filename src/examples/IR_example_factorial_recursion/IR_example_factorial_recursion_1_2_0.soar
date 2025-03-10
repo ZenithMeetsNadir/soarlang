@@ -12,15 +12,15 @@ call 2 @_factorial
 put [f]
 
 func @_factorial
-    ifeql _arg0 1
+    ifeql _arg 1
         set [_rtaddr] 1
         ret
         breakfn
     end
     
-    push _arg0
+    push _arg
     stlc a 
-    set b _arg0
+    set b _arg
     dec b
     
     call 2 @_factorial

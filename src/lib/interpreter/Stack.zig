@@ -6,7 +6,7 @@ const Stack = @This();
 
 pub const Properties = struct {
     pub const return_address_offset: usize = global.word_size;
-    pub const first_arg_offset: usize = return_address_offset + global.word_size;
+    pub const first_arg_offset: usize = global.word_size;
 };
 
 pub const defaut_stack_size: usize = math.pow(usize, 2, 10);
@@ -30,6 +30,9 @@ allocator: std.mem.Allocator,
 
 pub fn construct(allocator: std.mem.Allocator) std.mem.Allocator.Error!Stack {
     const tape_alloc = try allocator.alloc(u8, defaut_stack_size);
+    for (tape_alloc) |*byte| {
+        byte.* = 0;
+    }
     return Stack{ .stack_tape = tape_alloc, .localLabels = LabelHashMap.init(allocator), .allocator = allocator };
 }
 

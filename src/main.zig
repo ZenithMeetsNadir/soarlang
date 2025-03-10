@@ -11,11 +11,11 @@ pub fn main() !void {
     const args: []const [:0]u8 = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    std.debug.print("<DEBUG>\n\r", .{});
+    std.debug.print("<DEBUG>\n", .{});
     for (args) |arg| {
-        std.debug.print("{s}\n\r", .{arg});
+        std.debug.print("{s}\n", .{arg});
     }
-    std.debug.print("</DEBUG>\n\r\n\r", .{});
+    std.debug.print("</DEBUG>\n\n", .{});
 
     command_exec.executePrintOutput(args);
 }
