@@ -1,34 +1,32 @@
 ?lang=soar_IR
-?langver=1.4.0
+?langver=0.7.0
 
 init
 
 label result
-stlcsz a 4
+stlcsz a 4¨
 
 set b 4
 
 call 2 @_factorial
 
-putsz result 4
+put%4 result
 
 func @_factorial
     ifeql _arg1 1
-        setsz [_rtaddr] 4 1
+        set%4 [_rtaddr] 1
         ret
         breakfn
     end
     
-    pushsz 4 _arg1
+    push%4 _arg1
     stlcsz a 4
     set b _arg1
     dec b
     
     call 2 @_factorial
 
-    bytecpy [sp]-8 a 4
-    bytecpy [sp]-4 b 4
-    mul a b
-    setsz [_rtaddr] 4 a
+    mul%4 [sp]-8 [sp-4]
+    set%4 [_rtaddr] [sp-8]
     ret
 endfunc

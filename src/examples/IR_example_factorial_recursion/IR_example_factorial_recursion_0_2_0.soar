@@ -1,5 +1,5 @@
 ?lang=soar_IR
-?langver=1.2.0
+?langver=0.2.0
 
 init
 
@@ -12,20 +12,20 @@ call 2 @_factorial
 put [f]
 
 func @_factorial
-    ifeql _arg 1
-        set [_rtaddr] 1
+    ifeql [fp+16] 1
+        set [[fp]+8] 1
         ret
         breakfn
     end
     
-    push _arg
+    push [fp+16]
     stlc a 
-    set b _arg
+    set b [fp+16]
     dec b
     
     call 2 @_factorial
 
     mul [sp]-16 [sp-8]
-    set [_rtaddr] [sp-16]
+    set [[fp]+8] [sp-16]
     ret
 endfunc
