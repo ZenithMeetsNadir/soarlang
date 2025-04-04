@@ -4,7 +4,7 @@
 init
 
 label result
-stlcsz a 4¨
+stlcsz a 4
 
 set b 4
 
