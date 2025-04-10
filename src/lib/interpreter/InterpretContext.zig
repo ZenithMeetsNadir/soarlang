@@ -397,7 +397,7 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
                         args = try unwrapArgs(&arg_iter_mut, 1);
                         self.debugPrint(.interpret_proc, "\t<arg2: {s}>\n", .{args[0]});
 
-                        const res_str2 = try self.resolveString(tape, args[0]);
+                        const res_str2 = try self.resolveString(tape1, args[0]);
                         defer res_str2.dispose();
 
                         const string2 = res_str2.getStr();
