@@ -1,0 +1,35 @@
+?lang=soar_IR
+?langver=0.8.0
+
+init
+
+label $dyn_func
+pushstr @_factorial
+
+label result
+stlcsz a 4
+
+set b 4
+
+call 2 $dyn_func
+
+put%4 result
+
+func @_factorial
+    ifeql _arg1 1
+        set%4 [_rtaddr] 1
+        ret
+        breakfn
+    end
+    
+    push%4 _arg1
+    stlcsz a 4
+    set b _arg1
+    dec b
+    
+    call 2 $dyn_func
+
+    mul%4 [sp]-8 [sp-4]
+    set%4 [_rtaddr] [sp-8]
+    ret
+endfunc

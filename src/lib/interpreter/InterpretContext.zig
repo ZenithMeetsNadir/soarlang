@@ -11,6 +11,7 @@ const MemoryError = instruction.MemoryError;
 const global = @import("global.zig");
 const float = global.float;
 const Stack = @import("./Stack.zig");
+const ResolvedString = IR_parser.ResolvedString;
 
 const InterpretContext = @This();
 
@@ -154,26 +155,45 @@ fn resolve(self: InterpretContext, tape: *[]const u8, str: []const u8, is_value_
     return value;
 }
 
-pub fn resolveValue(self: InterpretContext, tape: []const u8, val_str: []const u8, instr_size: ?u8) (ArgumentError || instruction.AddressError || LabelError)!isize {
-    var tape_cpy = tape;
-    return try self.resolve(&tape_cpy, val_str, true, instr_size, true);
+pub fn resolveValue(self: InterpretContext, tape: []const u8, val_str: []const u8, instr_size: ?u8) (ArgumentError || AddressError || LabelError)!isize {
+    var tape_mut = tape;
+    return try self.resolve(&tape_mut, val_str, true, instr_size, true);
 }
-pub fn resolveAddress(self: InterpretContext, tape: *[]const u8, addr_str: []const u8) (ArgumentError || instruction.AddressError || LabelError)!usize {
+
+pub fn resolveAddress(self: InterpretContext, tape: *[]const u8, addr_str: []const u8) (ArgumentError || AddressError || LabelError)!usize {
     const address: usize = @bitCast(try self.resolve(tape, addr_str, false, null, true));
     self.debugPrint(.interpret_proc, "\t\tresolved address: {d}\n", .{address});
     return address;
 }
 
-pub fn resolveFloat(self: InterpretContext, tape: []const u8, float_str: []const u8) (ArgumentError || instruction.AddressError || LabelError)!float {
+pub fn resolveFloat(self: InterpretContext, tape: []const u8, float_str: []const u8) (ArgumentError || AddressError || LabelError)!float {
     if (float_str.len == 0)
         return ArgumentError.CouldNotParse;
 
-    var tape_cpy = tape;
-    const flt: float = std.fmt.parseFloat(float, float_str) catch @bitCast(try self.resolve(&tape_cpy, float_str, true, null, true));
+    var tape_mut = tape;
+    const flt: float = std.fmt.parseFloat(float, float_str) catch @bitCast(try self.resolve(&tape_mut, float_str, true, null, true));
 
     self.debugPrint(.interpret_proc, "\t\tresolved float: {d}\n", .{flt});
 
     return flt;
+}
+
+pub fn resolveString(self: InterpretContext, tape: []const u8, str: []const u8) (ArgumentError || AddressError || LabelError)!ResolvedString {
+    var tape_mut = tape;
+    const str_addr = self.resolveAddress(&tape_mut, str) catch |err| switch (err) {
+        ArgumentError.CouldNotParse, LabelError.LabelNotFound => {
+            const res_str = IR_parser.purifyStrLiteral(str, self.source_obj.allocator) catch return ArgumentError.CouldNotParse;
+            self.debugPrint(.interpret_proc, "\t\tresolved string: {s}\n", .{res_str.getStr()});
+
+            return res_str;
+        },
+        else => return err,
+    };
+
+    const sliced_str = try instruction.retrieveString(tape, str_addr);
+    self.debugPrint(.interpret_proc, "\t\tretrieved string from memory: {s}\n", .{sliced_str});
+
+    return ResolvedString{ .sliced_str = sliced_str };
 }
 
 pub fn unwrapArgs(arg_iter: *IR_parser.ArgumentIterator, comptime arg_count: usize) InstructionError![arg_count][]const u8 {
@@ -285,15 +305,6 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
                 },
                 .@"else" => try interpretCodeBlock(self, instr_iter),
                 .end, .endwhile => {},
-                .callraw => {
-                    const args = try unwrapArgs(&arg_iter_mut, 1);
-                    const func_name = args[0];
-                    debugPrint(self, .interpret_proc, "\t<arg1: {s}>\n", .{func_name});
-
-                    var func = try self.source_obj.getFunc(func_name);
-                    debugPrint(self, .interpret_proc, "\t\tcalling: {s}\n", .{func_name});
-                    try callFunc(self, &func);
-                },
                 .@"break" => breakCodeBlock(instr_iter),
                 .breakwh => return ExecutionInterruptionError.BreakWhileLoop,
                 .breakfn => return ExecutionInterruptionError.FunctionReturned,
@@ -382,6 +393,19 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
                             .setf => try instruction.setFloat(tape1, address1, flt2),
                             else => unreachable,
                         }
+                    } else if (instruction.Instruction.asArg(instr)) {
+                        args = try unwrapArgs(&arg_iter_mut, 1);
+                        self.debugPrint(.interpret_proc, "\t<arg2: {s}>\n", .{args[0]});
+
+                        const res_str2 = try self.resolveString(tape, args[0]);
+                        defer res_str2.dispose();
+
+                        const string2 = res_str2.getStr();
+
+                        switch (instr) {
+                            .storestr => try instruction.storeString(tape, address1, string2),
+                            else => unreachable,
+                        }
                     }
                 },
             }
@@ -412,18 +436,6 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
 
                     breakCodeBlock(instr_iter);
                 },
-                .call => {
-                    try instruction.call(tape, value1);
-                    debugPrint(self, .visual_stack, "<function call>\n", .{});
-
-                    args = try unwrapArgs(&arg_iter_mut, 1);
-                    const func_name = args[0];
-                    debugPrint(self, .interpret_proc, "\t<arg2: {s}>\n", .{func_name});
-
-                    var func = try self.source_obj.getFunc(func_name);
-                    debugPrint(self, .interpret_proc, "\t\tcalling: {s}\n", .{func_name});
-                    try callFunc(self, &func);
-                },
                 else => {
                     if (instruction.Instruction.vvArg(instr)) {
                         args = try unwrapArgs(&arg_iter_mut, 1);
@@ -453,6 +465,26 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
                             },
                             else => unreachable,
                         }
+                    } else if (instruction.Instruction.vsArg(instr)) {
+                        args = try unwrapArgs(&arg_iter_mut, 1);
+                        debugPrint(self, .interpret_proc, "\t<arg2: {s}>\n", .{args[0]});
+
+                        const res_str2 = try self.resolveString(tape, args[0]);
+                        defer res_str2.dispose();
+
+                        const string2 = res_str2.getStr();
+
+                        switch (instr) {
+                            .call => {
+                                try instruction.call(tape, value1);
+                                debugPrint(self, .visual_stack, "<function call>\n", .{});
+
+                                var func = try self.source_obj.getFunc(string2);
+                                debugPrint(self, .interpret_proc, "\t\tcalling: {s}\n", .{string2});
+                                try callFunc(self, &func);
+                            },
+                            else => unreachable,
+                        }
                     }
                 },
             }
@@ -460,10 +492,28 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
             const args = try unwrapArgs(&arg_iter_mut, 1);
             debugPrint(self, .interpret_proc, "\t<arg1: {s}>\n", .{args[0]});
 
-            const flt1 = try resolveFloat(self, tape, args[0]);
+            const flt1 = try self.resolveFloat(tape, args[0]);
 
             switch (instr) {
                 .putf => debugPrint(self, .interpret_proc, "{d}\n", .{flt1}),
+                else => unreachable,
+            }
+        } else if (instruction.Instruction.sArg(instr)) {
+            const args = try unwrapArgs(&arg_iter_mut, 1);
+            debugPrint(self, .interpret_proc, "\t<arg1: {s}>\n", .{args[0]});
+
+            const res_str1 = try self.resolveString(tape, args[0]);
+            defer res_str1.dispose();
+
+            const string1 = res_str1.getStr();
+
+            switch (instr) {
+                .callraw => {
+                    var func = try self.source_obj.getFunc(string1);
+                    debugPrint(self, .interpret_proc, "\t\tcalling: {s}\n", .{string1});
+                    try callFunc(self, &func);
+                },
+                .pushstr => try instruction.pushString(tape, string1),
                 else => unreachable,
             }
         }

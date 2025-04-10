@@ -24,10 +24,15 @@ soar_IR language versioning follows these rules:
 0.6.0
     labels - user defined symbols
 
-0.7.0 - in dev
+0.7.0
     everything in lowercase
     rework of non-wordsize instructions
     deprecated instructions: setsz; pushsz; putsz;
+
+0.8.0 - in dev
+    support string resolution and storing
+    backslash escape character in strings
+    dynamic function calls (as a result of the changes above)
 
 TODO:
     only register functions with usage that come from an included dll

@@ -7,14 +7,40 @@ const FunctionTableError = FunctionTable.FunctionTableError;
 const LangConfig = @import("../interpreter/LangConfig.zig");
 const byte_parser = @import("./byte_parser.zig");
 const squashStrBlock = byte_parser.squashStrBlock;
+const expect = std.testing.expect;
 
 pub const config_prefix: u8 = '?';
 pub const quote: u8 = '"';
+pub const str_escape: u8 = '\\';
 pub const comment: u8 = ';';
 pub const arg_delim: []const u8 = " \t";
 pub const instr_delim: []const u8 = "\r\n";
 pub const predef_symb_prefix: u8 = '_';
 pub const byte_size_delim: u8 = '%';
+
+pub const ResolvedString = union(enum) {
+    pub const OwnedString = struct {
+        str: []const u8,
+        allocator: std.mem.Allocator,
+    };
+
+    sliced_str: []const u8,
+    owned_str: OwnedString,
+
+    pub fn dispose(self: ResolvedString) void {
+        switch (self) {
+            .owned_str => |owned_str| owned_str.allocator.free(owned_str.str),
+            else => {},
+        }
+    }
+
+    pub fn getStr(self: ResolvedString) []const u8 {
+        return switch (self) {
+            .sliced_str => |sliced_str| sliced_str,
+            .owned_str => |owned_str| owned_str.str,
+        };
+    }
+};
 
 pub fn sepatareLines(source: []const u8) std.mem.SplitIterator(u8, .any) {
     return std.mem.splitAny(u8, source, instr_delim);
@@ -42,7 +68,14 @@ pub const ArgumentIterator = struct {
                 var end_quote: usize = start_quote;
                 while (blk: {
                     end_quote = std.mem.indexOfScalarPos(u8, self.line_iter.buffer, end_quote + 1, quote) orelse break :ret_wh null;
-                    break :blk self.line_iter.buffer[end_quote - 1] == '\\';
+                    if (end_quote > 0) {
+                        const esc_quote = self.line_iter.buffer[end_quote - 1] == '\\';
+                        if (end_quote > 1)
+                            break :blk esc_quote and self.line_iter.buffer[end_quote - 2] != '\\';
+
+                        break :blk esc_quote;
+                    }
+                    break :blk false;
                 }) {}
 
                 self.line_iter.index = if (self.line_iter.buffer.len > end_quote + 2) end_quote + 2 else null;
@@ -157,8 +190,25 @@ pub fn tokenize(source: []const u8) LineIterator {
     return LineIterator{ .source_iter = sepatareLines(source) };
 }
 
-pub fn purifyStrLiteral(source: []const u8, allocator: std.mem.Allocator) std.mem.Allocator.Error![]const u8 {
-    try std.mem.replaceOwned(u8, allocator, source, "\\\"", "\"");
+pub fn purifyStrLiteral(str: []const u8, allocator: std.mem.Allocator) std.mem.Allocator.Error!ResolvedString {
+    var iter = std.mem.splitScalar(u8, str, str_escape);
+    var accumulator = std.ArrayList(u8).init(allocator);
+    var is_start = true;
+    var escaping = true;
+
+    while (iter.next()) |swathe| : (is_start = false) {
+        if (swathe.len == 0 and !is_start and iter.peek() != null) {
+            if (escaping)
+                try accumulator.append(str_escape);
+
+            escaping = !escaping;
+        } else {
+            try accumulator.appendSlice(swathe);
+            escaping = true;
+        }
+    }
+
+    return ResolvedString{ .owned_str = .{ .str = try accumulator.toOwnedSlice(), .allocator = allocator } };
 }
 
 pub fn acknowledgeSymbPrefix(str: []const u8, prefix: u8) ?[]const u8 {
@@ -192,4 +242,14 @@ pub fn readLangConfig(instr_iter: *InstructionIterator) LangConfig {
     }
 
     return lang_config;
+}
+
+test "purify string litreral" {
+    const allocator = std.testing.allocator;
+    const str = "\\\\hel\\lo \\\"wo\\\\\\rld\\\\";
+
+    const purified = try purifyStrLiteral(str, allocator);
+    defer purified.dispose();
+
+    try expect(std.mem.eql(u8, purified.owned_str.str, "\\hello \"wo\\rld\\"));
 }

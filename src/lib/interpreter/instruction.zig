@@ -23,8 +23,6 @@ pub const Instruction = enum {
     @"break",
     /// break from a while loop
     breakwh,
-    /// call a function inside the current stack frame
-    callraw,
     /// break from a function
     breakfn,
     /// tear down the current stack frame
@@ -94,6 +92,10 @@ pub const Instruction = enum {
     /// set float at address
     setf,
 
+    // <address> <string>
+    /// store string at address
+    storestr,
+
     // <value>
     /// print word to stderr
     put,
@@ -109,8 +111,6 @@ pub const Instruction = enum {
     @"if",
     /// loop following code block until zero
     @"while",
-    /// call a function and create a new stack frame for it, passing values in registers A-F as arguments, the first one being the return address of this function
-    call,
 
     // <value> <value>
     /// enter following code block if equal words, jump to else block otherwise
@@ -144,9 +144,19 @@ pub const Instruction = enum {
     /// for testing purposes
     testeql,
 
+    // <value> <string>
+    /// call a function and create a new stack frame for it, passing values in registers A-F as arguments, the first one being the return address of this function
+    call,
+
     // <float>
     /// print float to console
     putf,
+
+    // <string>
+    /// call a function inside the current stack frame
+    callraw,
+    /// push string to stack
+    pushstr,
 
     pub fn fromString(instr_name: []const u8) ?Instruction {
         return std.meta.stringToEnum(Instruction, instr_name);
@@ -158,48 +168,60 @@ pub const Instruction = enum {
     }
 
     pub fn noArgs(instr: Instruction) bool {
-        return Instruction.inRange(instr, .init, .exit);
+        return instr.inRange(.init, .exit);
     }
 
     pub fn aArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .stlc, .setf);
+        return instr.inRange(.stlc, .setf);
     }
 
     pub fn aaArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .bytecpy, .bytecpy);
+        return instr.inRange(.bytecpy, .bytecpy);
     }
 
     pub fn aavArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .bytecpy, .bytecpy);
+        return instr.inRange(.bytecpy, .bytecpy);
     }
 
     pub fn avArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .set, .setsz);
+        return instr.inRange(.set, .setsz);
     }
 
     pub fn avvArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .setsz, .setsz);
+        return instr.inRange(.setsz, .setsz);
     }
 
     pub fn afArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .setf, .setf);
+        return instr.inRange(.setf, .setf);
+    }
+
+    pub fn asArg(instr: Instruction) bool {
+        return instr.inRange(.storestr, .storestr);
     }
 
     pub fn vArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .put, .testeql);
+        return instr.inRange(.put, .call);
     }
 
     pub fn vvArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .ifeql, .testeql);
+        return instr.inRange(.ifeql, .testeql);
+    }
+
+    pub fn vsArg(instr: Instruction) bool {
+        return instr.inRange(.call, .call);
     }
 
     pub fn fArg(instr: Instruction) bool {
-        return Instruction.inRange(instr, .putf, .putf);
+        return instr.inRange(.putf, .putf);
+    }
+
+    pub fn sArg(instr: Instruction) bool {
+        return instr.inRange(.callraw, .pushstr);
     }
 
     pub fn beginsCodeBlock(instr: Instruction) bool {
         return switch (instr) {
-            .@"if", .ifeql, .@"else", .@"while" => true,
+            .@"if", .ifeql, .ifgreq, .ifgrtr, .ifnoeq, .ifsmeq, .ifsmlr, .@"else", .@"while" => true,
             else => false,
         };
     }
@@ -455,6 +477,30 @@ pub fn call(tape: []u8, arg_count: isize) MemoryError!void {
         const reg_val = wordValue(&global.global_mem, reg_addr) catch return MemoryError.NotEnoughMemory;
         try push(tape, reg_val, null);
     }
+}
+
+pub fn retrieveString(tape: []const u8, address: usize) AddressError![]const u8 {
+    var null_esc = address;
+    return while (null_esc < tape.len) : (null_esc += 1) {
+        if (tape[null_esc] == 0)
+            break tape[address..null_esc];
+    } else AddressError.BadAddress;
+}
+
+pub fn storeString(tape: []u8, address: usize, str: []const u8) AddressError!void {
+    try copyBytes(str, 0, tape, address, str.len);
+
+    const esc_addr = address + str.len;
+    if (esc_addr > tape.len - 1)
+        return AddressError.BadAddress;
+
+    tape[esc_addr] = 0;
+}
+
+pub fn pushString(tape: []u8, str: []const u8) (MemoryError || AddressError)!void {
+    const sp_point = try wordUnsigned(tape, Stack.SP);
+    try storeString(tape, sp_point, str);
+    try reserveSized(tape, str.len + 1);
 }
 
 pub fn getReturnAddress(tape: []const u8) AddressError!usize {
