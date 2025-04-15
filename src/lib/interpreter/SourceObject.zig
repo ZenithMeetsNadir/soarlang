@@ -38,5 +38,5 @@ pub fn dispose(self: *SourceObject) void {
 }
 
 pub fn getFunc(self: SourceObject, func_name: []const u8) FunctionTable.FunctionGetError!IR_parser.InstructionIterator {
-    return self.func_table.func_map.get(func_name) orelse FunctionTable.FunctionGetError.UndefinedReference;
+    return try self.func_table.getFunc(func_name);
 }

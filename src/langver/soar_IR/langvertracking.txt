@@ -12,7 +12,7 @@ soar_IR language versioning follows these rules:
 0.3.0
     reference helper symbols _rtaddr _arg{x}
 
-    FIX: 
+    fix: 
         broken STALLOC instruction
 
 0.4.0
@@ -29,10 +29,15 @@ soar_IR language versioning follows these rules:
     rework of non-wordsize instructions
     deprecated instructions: setsz; pushsz; putsz;
 
-0.8.0 - in dev
+0.8.0
     support string resolution and storing
     backslash escape character in strings
     dynamic function calls (as a result of the changes above)
+
+0.9.0 - in dev
+    prefix aliases for included dlls
+    multiple aliases can be used for one dll
+    multiple dlls can use one alias
 
 TODO:
     only register functions with usage that come from an included dll

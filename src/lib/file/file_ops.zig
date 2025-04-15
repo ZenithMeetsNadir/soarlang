@@ -7,8 +7,10 @@ pub const ParentDirError = error{
 };
 
 pub fn readFileFromDir(dir: fs.Dir, path: []const u8, allocator: std.mem.Allocator) (fs.File.OpenError || std.mem.Allocator.Error || fs.File.GetSeekPosError || fs.File.ReadError)![]const u8 {
+    std.debug.print("trying to open file: {s}\n", .{path});
     const file = try dir.openFile(path, .{});
     defer file.close();
+    std.debug.print("opened file: {s}\n", .{path});
 
     const file_size = try file.getEndPos();
     const buffer = try allocator.alloc(u8, file_size);

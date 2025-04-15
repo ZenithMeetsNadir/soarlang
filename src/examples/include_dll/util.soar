@@ -1,0 +1,6 @@
+?lang=soar_IR
+?exectype=dll
+
+func @_util_func
+    put 1
+endfunc

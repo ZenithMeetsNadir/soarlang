@@ -1,0 +1,6 @@
+?lang=soar_IR
+?exectype=dll
+
+func @_lib_func
+    put 0
+endfunc

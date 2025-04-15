@@ -11,7 +11,7 @@ const MemoryError = instruction.MemoryError;
 const global = @import("global.zig");
 const float = global.float;
 const Stack = @import("./Stack.zig");
-const ResolvedString = IR_parser.ResolvedString;
+const ManagedString = IR_parser.ManagedString;
 
 const InterpretContext = @This();
 
@@ -178,12 +178,12 @@ pub fn resolveFloat(self: InterpretContext, tape: []const u8, float_str: []const
     return flt;
 }
 
-pub fn resolveString(self: InterpretContext, tape: []const u8, str: []const u8) (ArgumentError || AddressError || LabelError)!ResolvedString {
+pub fn resolveString(self: InterpretContext, tape: []const u8, str: []const u8) (ArgumentError || AddressError || LabelError)!ManagedString {
     var tape_mut = tape;
     const str_addr = self.resolveAddress(&tape_mut, str) catch |err| switch (err) {
         ArgumentError.CouldNotParse, LabelError.LabelNotFound => {
             const res_str = IR_parser.purifyStrLiteral(str, self.source_obj.allocator) catch return ArgumentError.CouldNotParse;
-            self.debugPrint(.interpret_proc, "\t\tresolved string: {s}\n", .{res_str.getStr()});
+            self.debugPrint(.interpret_proc, "\t\tresolved string: {s}\n", .{res_str.str()});
 
             return res_str;
         },
@@ -193,7 +193,7 @@ pub fn resolveString(self: InterpretContext, tape: []const u8, str: []const u8) 
     const sliced_str = try instruction.retrieveString(tape, str_addr);
     self.debugPrint(.interpret_proc, "\t\tretrieved string from memory: {s}\n", .{sliced_str});
 
-    return ResolvedString{ .sliced_str = sliced_str };
+    return ManagedString{ .sliced_str = sliced_str };
 }
 
 pub fn unwrapArgs(arg_iter: *IR_parser.ArgumentIterator, comptime arg_count: usize) InstructionError![arg_count][]const u8 {
@@ -275,7 +275,7 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
 
         const instr_name = instr_split.first();
         const instr = instruction.Instruction.fromString(instr_name) orelse {
-            debugPrint(self, .interpret_proc, "\n\rinstruction {s} NOT FOUND\n", .{instr_name});
+            debugPrint(self, .interpret_proc, "\nUNDEFINED INSTRUCTION {s}\n", .{instr_name});
             continue;
         };
         debugPrint(self, .interpret_proc, "\n<instruction: {s}>\n", .{@tagName(instr)});
@@ -400,7 +400,7 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
                         const res_str2 = try self.resolveString(tape1, args[0]);
                         defer res_str2.dispose();
 
-                        const string2 = res_str2.getStr();
+                        const string2 = res_str2.str();
 
                         switch (instr) {
                             .storestr => try instruction.storeString(tape, address1, string2),
@@ -472,7 +472,7 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
                         const res_str2 = try self.resolveString(tape, args[0]);
                         defer res_str2.dispose();
 
-                        const string2 = res_str2.getStr();
+                        const string2 = res_str2.str();
 
                         switch (instr) {
                             .call => {
@@ -505,7 +505,7 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
             const res_str1 = try self.resolveString(tape, args[0]);
             defer res_str1.dispose();
 
-            const string1 = res_str1.getStr();
+            const string1 = res_str1.str();
 
             switch (instr) {
                 .callraw => {

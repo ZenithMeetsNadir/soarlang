@@ -17,8 +17,11 @@ pub const arg_delim: []const u8 = " \t";
 pub const instr_delim: []const u8 = "\r\n";
 pub const predef_symb_prefix: u8 = '_';
 pub const byte_size_delim: u8 = '%';
+pub const func_start: []const u8 = "func";
+pub const func_end: []const u8 = "endfunc";
+pub const include_dll: []const u8 = "include";
 
-pub const ResolvedString = union(enum) {
+pub const ManagedString = union(enum) {
     pub const OwnedString = struct {
         str: []const u8,
         allocator: std.mem.Allocator,
@@ -27,14 +30,14 @@ pub const ResolvedString = union(enum) {
     sliced_str: []const u8,
     owned_str: OwnedString,
 
-    pub fn dispose(self: ResolvedString) void {
+    pub fn dispose(self: ManagedString) void {
         switch (self) {
             .owned_str => |owned_str| owned_str.allocator.free(owned_str.str),
             else => {},
         }
     }
 
-    pub fn getStr(self: ResolvedString) []const u8 {
+    pub fn str(self: ManagedString) []const u8 {
         return switch (self) {
             .sliced_str => |sliced_str| sliced_str,
             .owned_str => |owned_str| owned_str.str,
@@ -69,9 +72,9 @@ pub const ArgumentIterator = struct {
                 while (blk: {
                     end_quote = std.mem.indexOfScalarPos(u8, self.line_iter.buffer, end_quote + 1, quote) orelse break :ret_wh null;
                     if (end_quote > 0) {
-                        const esc_quote = self.line_iter.buffer[end_quote - 1] == '\\';
+                        const esc_quote = self.line_iter.buffer[end_quote - 1] == str_escape;
                         if (end_quote > 1)
-                            break :blk esc_quote and self.line_iter.buffer[end_quote - 2] != '\\';
+                            break :blk esc_quote and self.line_iter.buffer[end_quote - 2] != str_escape;
 
                         break :blk esc_quote;
                     }
@@ -106,6 +109,10 @@ pub const InstructionIterator = struct {
     is_func: bool = false,
     func_body: bool = false,
     code_block: bool = false,
+
+    fn ignoreInstruction(instr_name: []const u8) bool {
+        return std.mem.eql(u8, instr_name, include_dll);
+    }
 
     pub fn construct(line_iter: LineIterator) InstructionIterator {
         return InstructionIterator{ .line_iter = line_iter };
@@ -142,12 +149,12 @@ pub const InstructionIterator = struct {
             }
 
             if (!self.is_func) {
-                if (std.mem.eql(u8, instr_name, "func")) {
+                if (std.mem.eql(u8, instr_name, func_start)) {
                     self.is_func = true;
                     continue;
                 }
             } else {
-                if (std.mem.eql(u8, instr_name, "endfunc")) {
+                if (std.mem.eql(u8, instr_name, func_end)) {
                     if (self.func_body)
                         break null;
 
@@ -157,6 +164,9 @@ pub const InstructionIterator = struct {
                 if (!self.func_body)
                     continue;
             }
+
+            if (ignoreInstruction(instr_name))
+                continue;
 
             break arg_iter;
         } else null;
@@ -190,7 +200,7 @@ pub fn tokenize(source: []const u8) LineIterator {
     return LineIterator{ .source_iter = sepatareLines(source) };
 }
 
-pub fn purifyStrLiteral(str: []const u8, allocator: std.mem.Allocator) std.mem.Allocator.Error!ResolvedString {
+pub fn purifyStrLiteral(str: []const u8, allocator: std.mem.Allocator) std.mem.Allocator.Error!ManagedString {
     var iter = std.mem.splitScalar(u8, str, str_escape);
     var accumulator = std.ArrayList(u8).init(allocator);
     var is_start = true;
@@ -208,7 +218,7 @@ pub fn purifyStrLiteral(str: []const u8, allocator: std.mem.Allocator) std.mem.A
         }
     }
 
-    return ResolvedString{ .owned_str = .{ .str = try accumulator.toOwnedSlice(), .allocator = allocator } };
+    return ManagedString{ .owned_str = .{ .str = try accumulator.toOwnedSlice(), .allocator = allocator } };
 }
 
 pub fn acknowledgeSymbPrefix(str: []const u8, prefix: u8) ?[]const u8 {
