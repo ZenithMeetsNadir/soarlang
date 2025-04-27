@@ -2,6 +2,7 @@ const std = @import("std");
 const ICommand = @import("ICommand.zig");
 const comand_list = @import("command_list.zig");
 const CommandAdressingError = @import("CLI_error.zig").CommandAdressingError;
+const CommandExecutionError = @import("CLI_error.zig").CommandExecutionError;
 const help_command = @import("commands/help_command.zig").help_command;
 
 fn executeCommand(args: []const []const u8) CommandAdressingError![]const u8 {
@@ -10,18 +11,22 @@ fn executeCommand(args: []const []const u8) CommandAdressingError![]const u8 {
 
     const command: ICommand = findCommand(args[1]) orelse return CommandAdressingError.UnknownCommand;
 
-    return command.execute(args) catch "Either you fed me too few or too many arguments >,,<";
+    return command.execute(args) catch |err| switch (err) {
+        CommandExecutionError.InvalidArgumentCount => "Either you fed me too few or too many arguments >,,<",
+        CommandExecutionError.ExecutionFailed => "I am sorry, but I failed to successfully execute the command due to reasons I hope are stated above TnT",
+        CommandExecutionError.ExecutionInterrupted => "I am sorry to interrupt you, but something the text above hopefully elaborates on interrupted me OxO",
+    };
 }
 
 pub fn executePrintOutput(args: []const []const u8) void {
     const log = executeCommand(args) catch |err| blk: {
         break :blk switch (err) {
             CommandAdressingError.NoCommandProvided => help_command.execute(args) catch ">.< Oops! Help command failed, how may I help you?",
-            CommandAdressingError.UnknownCommand => "Hate to say that, but no such command exists O'_o\n",
+            CommandAdressingError.UnknownCommand => "Hate to say that, but no such command exists O'_o",
         };
     };
 
-    std.debug.print("{s}", .{log});
+    std.debug.print("{s}\n", .{log});
 }
 
 pub fn find(comptime T: type, array: []T, predicate: fn (elem: T) bool) ?T {

@@ -1,13 +1,13 @@
 const std = @import("std");
 const ICommand = @import("../ICommand.zig");
 const command_list = @import("../command_list.zig");
-const CommandArgsError = @import("../CLI_error.zig").CommandArgsError;
+const CommandExecutionError = @import("../CLI_error.zig").CommandExecutionError;
 
 pub const help_command: ICommand = .{ .name = "help", .description = "prints every existing command along with its brief description", .execute = execute };
 
-fn execute(args: []const []const u8) CommandArgsError![]const u8 {
+fn execute(args: []const []const u8) CommandExecutionError![]const u8 {
     if (args.len > 2)
-        return CommandArgsError.InvalidArgumentCount;
+        return CommandExecutionError.InvalidArgumentCount;
 
     return help();
 }

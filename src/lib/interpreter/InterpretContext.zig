@@ -96,10 +96,13 @@ fn resolve(self: InterpretContext, tape: *[]const u8, str: []const u8, is_value_
         tape.* = orig_tape;
         debugPrint(self, .interpret_proc, "\t\toverridden tape with original tape\n", .{});
     } else {
-        var no_offset = std.mem.splitAny(u8, str, "+-");
+        var split_offset = std.mem.splitAny(u8, str, "+-");
 
-        const no_offset_str = no_offset.first();
-        const offset_str = no_offset.next();
+        var no_offset_str = split_offset.first();
+        const is_offset = no_offset_str.len > 0;
+        no_offset_str = if (is_offset) no_offset_str else str;
+
+        const offset_str = if (is_offset) split_offset.next() else null;
 
         if (offset_str == null and no_offset_str[0] != '[') {
             if (is_value_resolution) {
@@ -451,12 +454,12 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
                             .ifgrtr => try self.interpretIf(value1 > value2, instr_iter),
                             .ifgreq => try self.interpretIf(value1 >= value2, instr_iter),
                             .pushsz => try instruction.pushSized(tape, value2, @intCast(value1)),
-                            .eql => try instruction.equal(tape, value1, value1, instr_size),
-                            .noeq => try instruction.notEqual(tape, value1, value1, instr_size),
-                            .smlr => try instruction.smaller(tape, value1, value1, instr_size),
-                            .smeq => try instruction.smallerOrEqual(tape, value1, value1, instr_size),
-                            .grtr => try instruction.greater(tape, value1, value1, instr_size),
-                            .greq => try instruction.greaterOrEqual(tape, value1, value1, instr_size),
+                            .eql => try instruction.equal(value1, value2, instr_size),
+                            .noeq => try instruction.notEqual(value1, value2, instr_size),
+                            .smlr => try instruction.smaller(value1, value2, instr_size),
+                            .smeq => try instruction.smallerOrEqual(value1, value2, instr_size),
+                            .grtr => try instruction.greater(value1, value2, instr_size),
+                            .greq => try instruction.greaterOrEqual(value1, value2, instr_size),
                             .testeql => {
                                 if (self.source_obj.debug_enabled) {
                                     std.debug.assert(value1 == value2);

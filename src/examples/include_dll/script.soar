@@ -1,2 +1,8 @@
 ?lang=soar_IR
 
+include lib.soar ""
+include util.soar ""
+
+init
+
+call 0 /@_print_mem

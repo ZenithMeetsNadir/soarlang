@@ -2,6 +2,7 @@ const std = @import("std");
 const fs = std.fs;
 const IR_parser = @import("./IR_parser.zig");
 const file_ops = @import("../file/file_ops.zig");
+const FunctionTableLog = @import("./logger.zig").FunctionTableLog;
 
 const FunctionTable = @This();
 
@@ -33,8 +34,9 @@ resources: Resources,
 alias_dict: AliasDict,
 
 pub fn construct(script_path: []const u8, allocator: std.mem.Allocator) file_ops.ParentDirError!FunctionTable {
-    const working_dir = fs.cwd().openDir(try file_ops.getParentDirPath(script_path), .{}) catch return file_ops.ParentDirError.PathNotFound;
-    std.debug.print("parent_dir_path: {s}\n", .{try file_ops.getParentDirPath(script_path)});
+    const parent_dir_path = try file_ops.getParentDirPath(script_path);
+    const working_dir = fs.cwd().openDir(parent_dir_path, .{}) catch return file_ops.ParentDirError.PathNotFound;
+    FunctionTableLog.debug("parent_dir_path: {s}", .{parent_dir_path});
     return FunctionTable{ .allocator = allocator, .func_map = FuncMap.init(allocator), .working_dir = working_dir, .resources = Resources.init(allocator), .alias_dict = AliasDict.init(allocator) };
 }
 
@@ -82,7 +84,7 @@ pub fn linkDll(self: *FunctionTable, path: []const u8, alias: []const u8) (DllLi
     if (IR_parser.readLangConfig(&instr_iter).exec_type != .dll)
         return DllLinkError.NotADll;
 
-    std.debug.print("found_existing: {any}\n", .{get_or_put.found_existing});
+    FunctionTableLog.debug("found_existing: {any}", .{get_or_put.found_existing});
     if (!get_or_put.found_existing) {
         var line_iter_cpy = line_iter;
         try self.fnTableFromIter(&line_iter_cpy, path, null, false);
@@ -102,12 +104,12 @@ pub fn fnTableFromIter(self: *FunctionTable, line_iter: *IR_parser.LineIterator,
             const slices: []const []const u8 = if (alias) |alias_set| &[_][]const u8{ alias_set, func_name } else &[_][]const u8{func_name};
             const func_name_alias = std.mem.join(self.allocator, "/", slices) catch return FunctionTableError.HashMapError;
             errdefer self.allocator.free(func_name_alias);
-            std.debug.print("func_name_alias: {s}\n", .{func_name_alias});
+            FunctionTableLog.debug("func_name_alias: {s}", .{func_name_alias});
 
             const root_slices: []const []const u8 = if (root_alias) |root_alias_set| &[_][]const u8{ root_alias_set, func_name } else &[_][]const u8{func_name_alias};
             const func_root_name = std.mem.join(self.allocator, "/", root_slices) catch return FunctionTableError.HashMapError;
             defer self.allocator.free(func_root_name);
-            std.debug.print("func_root_name: {s}\n", .{func_root_name});
+            FunctionTableLog.debug("func_root_name: {s}", .{func_root_name});
 
             if (shadow) {
                 const root_entry = self.alias_dict.getEntry(func_root_name) orelse return FunctionTableError.NoRootForAlias;
@@ -137,7 +139,8 @@ pub fn fnTableFromIter(self: *FunctionTable, line_iter: *IR_parser.LineIterator,
             const alias_pure = IR_parser.purifyStrLiteral(include_alias, self.allocator) catch return FunctionTableError.HashMapError;
             defer alias_pure.dispose();
 
-            std.debug.print("\ninclude_alias: {s}\n", .{include_alias});
+            std.debug.print("\n", .{});
+            FunctionTableLog.debug("include_alias: {s}", .{include_alias});
 
             try self.linkDll(path, alias_pure.str());
         }

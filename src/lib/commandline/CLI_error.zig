@@ -3,6 +3,8 @@ pub const CommandAdressingError = error{
     UnknownCommand,
 };
 
-pub const CommandArgsError = error{
+pub const CommandExecutionError = error{
     InvalidArgumentCount,
+    ExecutionFailed,
+    ExecutionInterrupted,
 };

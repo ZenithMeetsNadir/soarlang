@@ -3,6 +3,8 @@ const assert = std.debug.assert;
 const command_exec = @import("lib/commandline/command_exec.zig");
 const CommandAdressingError = command_exec.CommandAdressingError;
 
+pub const std_options: std.Options = .{ .log_level = .debug, .logFn = @import("lib/commandline/log.zig").logFn };
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();

@@ -4,3 +4,15 @@
 func @_util_func
     put 1
 endfunc
+
+func @_print_mem
+    set a 0
+    smlr a rams
+
+    while e
+        ;put [a]
+        add a 8
+        
+        smlr a rams
+    endwhile
+endfunc

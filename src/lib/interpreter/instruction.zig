@@ -379,28 +379,28 @@ pub fn decrementWSize(tape: []u8, address: usize, size: ?u8) AddressError!void {
     try addWord(tape, address, -global.word_size, size);
 }
 
-pub fn equal(tape: []u8, value1: isize, value2: isize, size: ?u8) AddressError!void {
-    try set(tape, global.F, @intFromBool(value1 == value2), size);
+pub fn equal(value1: isize, value2: isize, size: ?u8) AddressError!void {
+    try set(&global.global_mem, global.F, @intFromBool(value1 == value2), size);
 }
 
-pub fn notEqual(tape: []u8, value1: isize, value2: isize, size: ?u8) AddressError!void {
-    try set(tape, global.F, @intFromBool(value1 != value2), size);
+pub fn notEqual(value1: isize, value2: isize, size: ?u8) AddressError!void {
+    try set(&global.global_mem, global.F, @intFromBool(value1 != value2), size);
 }
 
-pub fn smaller(tape: []u8, value1: isize, value2: isize, size: ?u8) AddressError!void {
-    try set(tape, global.E, @intFromBool(value1 < value2), size);
+pub fn smaller(value1: isize, value2: isize, size: ?u8) AddressError!void {
+    try set(&global.global_mem, global.E, @intFromBool(value1 < value2), size);
 }
 
-pub fn smallerOrEqual(tape: []u8, value1: isize, value2: isize, size: ?u8) AddressError!void {
-    try set(tape, global.E, @intFromBool(value1 <= value2), size);
+pub fn smallerOrEqual(value1: isize, value2: isize, size: ?u8) AddressError!void {
+    try set(&global.global_mem, global.E, @intFromBool(value1 <= value2), size);
 }
 
-pub fn greater(tape: []u8, value1: isize, value2: isize, size: ?u8) AddressError!void {
-    try set(tape, global.D, @intFromBool(value1 > value2), size);
+pub fn greater(value1: isize, value2: isize, size: ?u8) AddressError!void {
+    try set(&global.global_mem, global.D, @intFromBool(value1 > value2), size);
 }
 
-pub fn greaterOrEqual(tape: []u8, value1: isize, value2: isize, size: ?u8) AddressError!void {
-    try set(tape, global.D, @intFromBool(value1 >= value2), size);
+pub fn greaterOrEqual(value1: isize, value2: isize, size: ?u8) AddressError!void {
+    try set(&global.global_mem, global.D, @intFromBool(value1 >= value2), size);
 }
 
 pub fn dereferenceWord(tape: []u8, stack_tape: []const u8, address: usize) AddressError!void {
