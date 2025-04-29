@@ -1,18 +1,16 @@
 ?lang=soar_IR
 ?exectype=dll
 
-func @_util_func
-    put 1
-endfunc
+func @_str_len
+    push _arg1
+    noeq [[sp-8]] 0
 
-func @_print_mem
-    set a 0
-    smlr a rams
-
-    while e
-        ;put [a]
-        add a 8
-        
-        smlr a rams
+    while f
+        inc [sp]-8
+        noeq [[sp-8]] 0
     endwhile
+
+    sub [sp]-8 _arg1
+    set [_rtaddr] [sp-8]
+    ret
 endfunc

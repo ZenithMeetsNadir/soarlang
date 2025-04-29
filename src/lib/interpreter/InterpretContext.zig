@@ -12,6 +12,7 @@ const global = @import("global.zig");
 const float = global.float;
 const Stack = @import("./Stack.zig");
 const ManagedString = IR_parser.ManagedString;
+const FileError = instruction.FileError;
 
 const InterpretContext = @This();
 
@@ -39,7 +40,7 @@ const LabelError = error{
     HashMapInternalError,
 };
 
-pub const InterpretError = AddressError || MemoryError || ExecutionInterruptionError || InstructionError || ArgumentError || FunctionGetError || LabelError;
+pub const InterpretError = AddressError || MemoryError || ExecutionInterruptionError || InstructionError || ArgumentError || FunctionGetError || LabelError || FileError;
 
 const DebugMode = enum { interpret_proc, visual_stack };
 
@@ -232,7 +233,7 @@ pub fn breakCodeBlock(instr_iter: *InstructionIterator) void {
 
         if (instruction.Instruction.beginsCodeBlock(instr)) {
             open_blocks += 1;
-        } else if (instr == .end) {
+        } else if (instr == .end or instr == .endwhile) {
             if (open_blocks > 0) {
                 open_blocks -= 1;
             } else break;
@@ -383,6 +384,19 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
                                         .setsz => try instruction.setSized(tape1, address1, value3, @intCast(value2)),
                                         else => unreachable,
                                     }
+                                } else if (instruction.Instruction.avsArg(instr)) {
+                                    args = try unwrapArgs(&arg_iter_mut, 1);
+                                    self.debugPrint(.interpret_proc, "\t<arg3: {s}>\n", .{args[0]});
+
+                                    const res_str3 = try self.resolveString(tape, args[0]);
+                                    defer res_str3.dispose();
+
+                                    const string3 = res_str3.str();
+
+                                    switch (instr) {
+                                        .filesave => try instruction.filesave(self.source_obj, tape1, address1, @bitCast(value2), string3),
+                                        else => unreachable,
+                                    }
                                 }
                             },
                         }
@@ -416,7 +430,7 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
             var args = try unwrapArgs(&arg_iter_mut, 1);
             debugPrint(self, .interpret_proc, "\t<arg1: {s}>\n", .{args[0]});
 
-            var value1 = try resolveValue(self, tape, args[0], instr_size);
+            var value1 = try self.resolveValue(tape, args[0], instr_size);
 
             switch (instr) {
                 .put => std.debug.print("{any}\n", .{value1}),
@@ -426,11 +440,11 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
                 .pop => try instruction.pop(tape, value1),
                 .@"if" => try interpretIf(self, value1 != 0, instr_iter),
                 .@"while" => {
-                    while (value1 != 0) : (value1 = try resolveValue(self, tape, args[0], instr_size)) {
+                    while (value1 != 0) : (value1 = try self.resolveValue(tape, args[0], instr_size)) {
                         var code_block_start = instr_iter.*;
                         interpretCodeBlock(self, &code_block_start) catch |err| switch (err) {
                             ExecutionInterruptionError.BreakWhileLoop => break,
-                            else => {},
+                            else => return err,
                         };
 
                         debugPrint(self, .interpret_proc, "\n<while loop condition>\n", .{});

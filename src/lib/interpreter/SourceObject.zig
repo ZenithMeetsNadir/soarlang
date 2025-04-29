@@ -33,8 +33,8 @@ pub fn createFnTable(self: *SourceObject) (FunctionTable.DllLinkError || Functio
 }
 
 pub fn dispose(self: *SourceObject) void {
-    self.func_table.dispose();
     self.stack.dispose();
+    self.func_table.dispose();
 }
 
 pub fn getFunc(self: SourceObject, func_name: []const u8) FunctionTable.FunctionGetError!IR_parser.InstructionIterator {

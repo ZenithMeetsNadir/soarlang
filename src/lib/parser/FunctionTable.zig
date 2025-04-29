@@ -28,7 +28,7 @@ pub const FunctionGetError = error{
 };
 
 allocator: std.mem.Allocator,
-working_dir: fs.Dir = undefined,
+working_dir: fs.Dir,
 func_map: FuncMap,
 resources: Resources,
 alias_dict: AliasDict,
@@ -74,8 +74,12 @@ pub fn createFnTable(self: *FunctionTable, line_iter: *IR_parser.LineIterator) (
 
 pub fn linkDll(self: *FunctionTable, path: []const u8, alias: []const u8) (DllLinkError || FunctionTableError)!void {
     const get_or_put = self.resources.getOrPut(path) catch return FunctionTableError.HashMapError;
-    if (!get_or_put.found_existing)
-        get_or_put.value_ptr.* = file_ops.readFileFromDir(self.working_dir, path, self.allocator) catch return DllLinkError.PathNotFound;
+    if (!get_or_put.found_existing) {
+        get_or_put.value_ptr.* = file_ops.readFileFromDir(self.working_dir, path, self.allocator) catch {
+            _ = self.resources.remove(path);
+            return DllLinkError.PathNotFound;
+        };
+    }
 
     const source: []const u8 = get_or_put.value_ptr.*;
 

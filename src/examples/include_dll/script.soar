@@ -1,8 +1,13 @@
 ?lang=soar_IR
 
-include lib.soar ""
-include util.soar ""
+include uti.soar ""
 
 init
 
-call 0 /@_print_mem
+set b sp
+pushstr abcdefg
+
+stlc a
+call 2 /@_str_len
+
+filesave [b] [a] text.txt

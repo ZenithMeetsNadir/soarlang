@@ -4,10 +4,12 @@ const IR_parser = @import("../parser/IR_parser.zig");
 const global = @import("global.zig");
 const float = global.float;
 const Stack = @import("./Stack.zig");
+const SourceObject = @import("./SourceObject.zig");
+const file_ops = @import("../file/file_ops.zig");
 
 pub const Instruction = enum {
     // no args
-    /// initialise SP
+    /// initialize tape pointers
     init,
     /// allocate word on stack (increment SP by word size)
     resrv,
@@ -88,6 +90,10 @@ pub const Instruction = enum {
     /// deprecated: use `set%{size}` instead
     setsz,
 
+    // <address> <value> <string>
+    /// save bytes to file
+    filesave,
+
     // <address> <float>
     /// set float at address
     setf,
@@ -95,6 +101,8 @@ pub const Instruction = enum {
     // <address> <string>
     /// store string at address
     storestr,
+    /// load file to address
+    loadfile,
 
     // <value>
     /// print word to stderr
@@ -172,7 +180,7 @@ pub const Instruction = enum {
     }
 
     pub fn aArg(instr: Instruction) bool {
-        return instr.inRange(.stlc, .setf);
+        return instr.inRange(.stlc, .loadfile);
     }
 
     pub fn aaArg(instr: Instruction) bool {
@@ -184,11 +192,15 @@ pub const Instruction = enum {
     }
 
     pub fn avArg(instr: Instruction) bool {
-        return instr.inRange(.set, .setsz);
+        return instr.inRange(.set, .filesave);
     }
 
     pub fn avvArg(instr: Instruction) bool {
         return instr.inRange(.setsz, .setsz);
+    }
+
+    pub fn avsArg(instr: Instruction) bool {
+        return instr.inRange(.filesave, .filesave);
     }
 
     pub fn afArg(instr: Instruction) bool {
@@ -196,7 +208,7 @@ pub const Instruction = enum {
     }
 
     pub fn asArg(instr: Instruction) bool {
-        return instr.inRange(.storestr, .storestr);
+        return instr.inRange(.storestr, .loadfile);
     }
 
     pub fn vArg(instr: Instruction) bool {
@@ -233,6 +245,10 @@ pub const AddressError = error{
 
 pub const MemoryError = error{
     NotEnoughMemory,
+};
+
+pub const FileError = error{
+    SaveFileError,
 };
 
 pub fn wordBytes(tape: []const u8, address: usize) AddressError![]const u8 {
@@ -511,4 +527,12 @@ pub fn getReturnAddress(tape: []const u8) AddressError!usize {
 pub fn getArgAddress(tape: []const u8, arg_num: usize) AddressError!usize {
     const fp_point = try wordUnsigned(tape, Stack.FP);
     return fp_point + Stack.Properties.first_arg_offset + arg_num * global.word_size;
+}
+
+pub fn filesave(src_obj: *SourceObject, tape: []const u8, address: usize, length: usize, path: []const u8) (FileError || AddressError)!void {
+    if (address + length > tape.len)
+        return AddressError.BadAddress;
+
+    const bytes = tape[address .. address + length];
+    file_ops.saveFileToDir(src_obj.func_table.working_dir, path, bytes) catch return FileError.SaveFileError;
 }

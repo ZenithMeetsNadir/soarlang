@@ -7,10 +7,8 @@ pub const ParentDirError = error{
 };
 
 pub fn readFileFromDir(dir: fs.Dir, path: []const u8, allocator: std.mem.Allocator) (fs.File.OpenError || std.mem.Allocator.Error || fs.File.GetSeekPosError || fs.File.ReadError)![]const u8 {
-    std.debug.print("trying to open file: {s}\n", .{path});
     const file = try dir.openFile(path, .{});
     defer file.close();
-    std.debug.print("opened file: {s}\n", .{path});
 
     const file_size = try file.getEndPos();
     const buffer = try allocator.alloc(u8, file_size);
@@ -35,9 +33,13 @@ pub fn getParentDirPath(path: []const u8) ParentDirError![]const u8 {
     return parent_path.path;
 }
 
-pub fn saveFile(path: []const u8, data: []const u8) (std.fs.File.OpenError || std.fs.File.WriteError)!void {
-    const file = try std.fs.cwd().createFile(path, .{});
+pub fn saveFileToDir(dir: fs.Dir, path: []const u8, data: []const u8) (fs.File.OpenError || fs.File.WriteError)!void {
+    const file = try dir.createFile(path, .{});
     defer file.close();
 
     try file.writeAll(data);
+}
+
+pub fn saveFile(path: []const u8, data: []const u8) (std.fs.File.OpenError || std.fs.File.WriteError)!void {
+    try saveFileToDir(fs.cwd(), path, data);
 }
