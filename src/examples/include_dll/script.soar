@@ -1,13 +1,21 @@
 ?lang=soar_IR
 
-include uti.soar ""
+include str.soar str
 
 init
 
 set b sp
-pushstr abcdefg
+pushstr "Hello world!!!"
+push b
 
 stlc a
-call 2 /@_str_len
+push a
+call 2 str/@_len
 
-filesave [b] [a] text.txt
+set a [sp-24]
+storestr b l
+storestr c L
+
+call 3 str/@_replace_all
+
+filesave [[sp]-24] [[sp-8]] hello_world.txt

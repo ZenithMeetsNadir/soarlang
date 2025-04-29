@@ -13,6 +13,7 @@ const float = global.float;
 const Stack = @import("./Stack.zig");
 const ManagedString = IR_parser.ManagedString;
 const FileError = instruction.FileError;
+const IpretLog = @import("./logger.zig").IpretLog;
 
 const InterpretContext = @This();
 
@@ -227,13 +228,14 @@ pub fn breakCodeBlock(instr_iter: *InstructionIterator) void {
 
     while (instr_iter.next()) |arg_iter| {
         var arg_iter_mut = arg_iter;
-        const instr_name = arg_iter_mut.first() orelse continue;
+        var instr_split = std.mem.splitScalar(u8, arg_iter_mut.first() orelse continue, IR_parser.byte_size_delim);
 
+        const instr_name = instr_split.first();
         const instr = instruction.Instruction.fromString(instr_name) orelse continue;
 
-        if (instruction.Instruction.beginsCodeBlock(instr)) {
+        if (instr.beginsCodeBlock()) {
             open_blocks += 1;
-        } else if (instr == .end or instr == .endwhile) {
+        } else if (instr.endsCodeBlock()) {
             if (open_blocks > 0) {
                 open_blocks -= 1;
             } else break;
@@ -258,8 +260,10 @@ pub fn interpretIf(self: InterpretContext, condition: bool, instr_iter: *Instruc
         try interpretCodeBlock(self, instr_iter);
 
         const arg_iter = instr_iter.peek() orelse return;
-        if (std.mem.eql(u8, arg_iter.peekInstrName() orelse return, @tagName(instruction.Instruction.@"else")))
+        if (std.mem.eql(u8, arg_iter.peekInstrName() orelse return, @tagName(instruction.Instruction.@"else"))) {
+            _ = instr_iter.next();
             breakCodeBlock(instr_iter);
+        }
     } else breakCodeBlock(instr_iter);
 }
 
@@ -279,7 +283,7 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
 
         const instr_name = instr_split.first();
         const instr = instruction.Instruction.fromString(instr_name) orelse {
-            debugPrint(self, .interpret_proc, "\nUNDEFINED INSTRUCTION {s}\n", .{instr_name});
+            IpretLog.warn("Undefined instruction: '{s}'", .{instr_name});
             continue;
         };
         debugPrint(self, .interpret_proc, "\n<instruction: {s}>\n", .{@tagName(instr)});
@@ -420,7 +424,7 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
                         const string2 = res_str2.str();
 
                         switch (instr) {
-                            .storestr => try instruction.storeString(tape, address1, string2),
+                            .storestr => try instruction.storeString(tape1, address1, string2),
                             else => unreachable,
                         }
                     }
@@ -438,12 +442,13 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
                 .rsvsz => try instruction.reserveSized(tape, @intCast(value1)),
                 .push => try instruction.push(tape, value1, instr_size),
                 .pop => try instruction.pop(tape, value1),
-                .@"if" => try interpretIf(self, value1 != 0, instr_iter),
+                .@"if" => try self.interpretIf(value1 != 0, instr_iter),
                 .@"while" => {
-                    while (value1 != 0) : (value1 = try self.resolveValue(tape, args[0], instr_size)) {
+                    wh: while (value1 != 0) : (value1 = try self.resolveValue(tape, args[0], instr_size)) {
                         var code_block_start = instr_iter.*;
+                        debugPrint(self, .interpret_proc, "\n<interpretCodeBlock>\n", .{});
                         interpretCodeBlock(self, &code_block_start) catch |err| switch (err) {
-                            ExecutionInterruptionError.BreakWhileLoop => break,
+                            ExecutionInterruptionError.BreakWhileLoop => break :wh,
                             else => return err,
                         };
 

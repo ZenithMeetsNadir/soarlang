@@ -1,0 +1,39 @@
+?lang=soar_IR
+?exectype=dll
+
+; param1: string start address
+func @_len
+    set a _arg1
+    noeq%1 [a] 0
+
+    while f
+        inc a
+        noeq%1 [a] 0
+    end
+
+    sub a _arg1
+    set [_rtaddr] a
+    ret
+endfunc
+
+; param0: string start address
+; param1: char to be replaced
+; param2: replace char
+func @_replace_all
+    set b _arg0
+
+    while 1
+        ifeql%1 [b] _arg1
+            set%1 [b] _arg2
+        end
+        else
+            ifeql%1 [b] 0
+                breakwh
+            end
+        end
+
+        inc b
+    end
+
+    ret
+endfunc

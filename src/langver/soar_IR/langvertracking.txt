@@ -44,11 +44,13 @@ soar_IR language versioning follows these rules:
         do not split negative numbers with '-' prefix as if being offset
 
 0.10.0 - in dev
-    added instruction to save and load files
+    added instructions to save and load files
 
     fix: 
         make endwhile end of a code block
+        deprecate endwhile as the ending a while block, end will suffice
         properly dispose of a function table resource entry when path was not found
+        interpretIf helper function incorrectly breaking out of following else block
 
 TODO:
     only register functions with usage that come from an included dll

@@ -77,6 +77,7 @@ pub fn linkDll(self: *FunctionTable, path: []const u8, alias: []const u8) (DllLi
     if (!get_or_put.found_existing) {
         get_or_put.value_ptr.* = file_ops.readFileFromDir(self.working_dir, path, self.allocator) catch {
             _ = self.resources.remove(path);
+            FunctionTableLog.err("Undefined dll reference: not found '{s}'", .{path});
             return DllLinkError.PathNotFound;
         };
     }
@@ -143,7 +144,6 @@ pub fn fnTableFromIter(self: *FunctionTable, line_iter: *IR_parser.LineIterator,
             const alias_pure = IR_parser.purifyStrLiteral(include_alias, self.allocator) catch return FunctionTableError.HashMapError;
             defer alias_pure.dispose();
 
-            std.debug.print("\n", .{});
             FunctionTableLog.debug("include_alias: {s}", .{include_alias});
 
             try self.linkDll(path, alias_pure.str());

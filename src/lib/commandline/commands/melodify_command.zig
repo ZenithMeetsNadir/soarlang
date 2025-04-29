@@ -35,7 +35,6 @@ fn execute(args: []const []const u8) CommandExecutionError![]const u8 {
         return CommandExecutionError.ExecutionFailed;
     };
     defer source_obj.dispose();
-    std.log.info("Source object successfully constructed", .{});
 
     std.log.info("Picking up workflow...", .{});
     try configureInterpret(&source_obj);
@@ -51,8 +50,6 @@ fn configureInterpret(source_obj: *SourceObject) CommandExecutionError!void {
                 FunctionTableLog.err("Failed to create function table: {s}", .{@errorName(err)});
                 return CommandExecutionError.ExecutionFailed;
             };
-            //defer source_obj.func_table.dispose();
-            FunctionTableLog.info("Function table successfully created", .{});
 
             var ipret_ctx = InterpretContext{ .source_obj = source_obj };
 

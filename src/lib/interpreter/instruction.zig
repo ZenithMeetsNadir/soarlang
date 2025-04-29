@@ -20,6 +20,8 @@ pub const Instruction = enum {
     /// end of code block
     end,
     /// end of a while loop
+    ///
+    /// deprecated: use `end` instead
     endwhile,
     /// break from a code block
     @"break",
@@ -234,6 +236,13 @@ pub const Instruction = enum {
     pub fn beginsCodeBlock(instr: Instruction) bool {
         return switch (instr) {
             .@"if", .ifeql, .ifgreq, .ifgrtr, .ifnoeq, .ifsmeq, .ifsmlr, .@"else", .@"while" => true,
+            else => false,
+        };
+    }
+
+    pub fn endsCodeBlock(instr: Instruction) bool {
+        return switch (instr) {
+            .end, .endwhile => true,
             else => false,
         };
     }
