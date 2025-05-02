@@ -104,11 +104,15 @@ fn resolve(self: InterpretContext, tape: *[]const u8, str: []const u8, is_value_
         const is_offset = no_offset_str.len > 0;
         no_offset_str = if (is_offset) no_offset_str else str;
 
-        const offset_str = if (is_offset) split_offset.next() else null;
+        const offset_str: ?[]const u8 = if (is_offset) split_offset.next() else null;
 
         if (offset_str == null and no_offset_str[0] != '[') {
             if (is_value_resolution) {
-                value = std.fmt.parseInt(isize, no_offset_str, 0) catch |err| blk: {
+                const is_neg = no_offset_str[0] == '-';
+                if (is_neg)
+                    no_offset_str = no_offset_str[1..];
+
+                const uvalue = std.fmt.parseUnsigned(usize, no_offset_str, 0) catch |err| blk: {
                     break :blk switch (err) {
                         std.fmt.ParseIntError.Overflow => return ArgumentError.CouldNotParse,
                         std.fmt.ParseIntError.InvalidCharacter => inv_char: {
@@ -120,10 +124,14 @@ fn resolve(self: InterpretContext, tape: *[]const u8, str: []const u8, is_value_
 
                             const ptr_tape: []const u8 = if (ptr.is_global) &global.global_mem else tape.*;
 
-                            break :inv_char try instruction.word(ptr_tape, ptr.address, size);
+                            break :inv_char @as(usize, @bitCast(try instruction.word(ptr_tape, ptr.address, size)));
                         },
                     };
                 };
+                value = @bitCast(uvalue);
+
+                if (is_neg)
+                    value = -value;
             } else {
                 value = @bitCast(std.fmt.parseUnsigned(usize, no_offset_str, 0) catch |err| blk: {
                     break :blk switch (err) {
