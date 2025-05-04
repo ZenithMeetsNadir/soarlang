@@ -449,7 +449,8 @@ pub fn interpret(self: InterpretContext, instr_iter: *InstructionIterator) Inter
                 .putx => std.debug.print("{x}\n", .{value1}),
                 .rsvsz => try instruction.reserveSized(tape, @intCast(value1)),
                 .push => try instruction.push(tape, value1, instr_size),
-                .pop => try instruction.pop(tape, value1),
+                .popw => instruction.popw(tape, @bitCast(value1)),
+                .popb => instruction.popb(tape, @bitCast(value1)),
                 .@"if" => try self.interpretIf(value1 != 0, instr_iter),
                 .@"while" => {
                     wh: while (value1 != 0) : (value1 = try self.resolveValue(tape, args[0], instr_size)) {

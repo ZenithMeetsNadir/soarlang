@@ -115,8 +115,10 @@ pub const Instruction = enum {
     rsvsz,
     /// push word to stack (SET + RESRV)
     push,
-    /// tear down stack
-    pop,
+    /// tear down stack by word size multiple
+    popw,
+    /// tear down stack by bytes
+    popb,
     /// enter following code block if true (nonzero), jump to else block otherwise
     @"if",
     /// loop following code block until zero
@@ -254,6 +256,7 @@ pub const AddressError = error{
 
 pub const MemoryError = error{
     NotEnoughMemory,
+    ExceededRegisterCount,
 };
 
 pub const FileError = error{
@@ -434,46 +437,58 @@ pub fn dereferenceWord(tape: []u8, stack_tape: []const u8, address: usize) Addre
 }
 
 pub fn reserve(tape: []u8) MemoryError!void {
-    incrementWSize(tape, Stack.SP, null) catch return MemoryError.NotEnoughMemory;
+    const new_sp = (wordUnsigned(tape, Stack.SP) catch unreachable) + global.word_size;
+    if (new_sp > tape.len - 1)
+        return MemoryError.NotEnoughMemory;
+
+    setUnsigned(tape, Stack.SP, new_sp) catch unreachable;
 }
 
 pub fn reserveSized(tape: []u8, value: usize) MemoryError!void {
-    addWord(tape, Stack.SP, @bitCast(value), null) catch return MemoryError.NotEnoughMemory;
+    const new_sp = (wordUnsigned(tape, Stack.SP) catch unreachable) + value;
+    if (new_sp > tape.len - 1)
+        return MemoryError.NotEnoughMemory;
+
+    setUnsigned(tape, Stack.SP, new_sp) catch unreachable;
 }
 
-pub fn stackAlloc(tape: []u8, stack_tape: []u8, address: usize) MemoryError!void {
-    const sp_point = wordUnsigned(stack_tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
-    setUnsigned(tape, address, sp_point) catch return MemoryError.NotEnoughMemory;
+pub fn stackAlloc(tape: []u8, stack_tape: []u8, address: usize) (AddressError || MemoryError)!void {
+    const sp_point = wordUnsigned(stack_tape, Stack.SP) catch unreachable;
+    setUnsigned(tape, address, sp_point) catch return AddressError.BadAddress;
     try reserve(stack_tape);
 }
 
-pub fn stackAllocSized(tape: []u8, stack_tape: []u8, address: usize, value: usize) MemoryError!void {
-    const sp_point = wordUnsigned(stack_tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
-    setUnsigned(tape, address, sp_point) catch return MemoryError.NotEnoughMemory;
+pub fn stackAllocSized(tape: []u8, stack_tape: []u8, address: usize, value: usize) (AddressError || MemoryError)!void {
+    const sp_point = wordUnsigned(stack_tape, Stack.SP) catch unreachable;
+    setUnsigned(tape, address, sp_point) catch return AddressError.BadAddress;
     try reserveSized(stack_tape, value);
 }
 
-pub fn push(tape: []u8, value: isize, size: ?u8) MemoryError!void {
-    const sp_point = wordUnsigned(tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
-    set(tape, sp_point, value, size) catch return MemoryError.NotEnoughMemory;
+pub fn push(tape: []u8, value: isize, size: ?u8) (AddressError || MemoryError)!void {
+    const sp_point = wordUnsigned(tape, Stack.SP) catch unreachable;
+    set(tape, sp_point, value, size) catch return AddressError.BadAddress;
     try reserveSized(tape, @as(usize, size orelse global.word_size));
 }
 
-pub fn pushSized(tape: []u8, value: isize, size: u8) MemoryError!void {
-    const sp_point = wordUnsigned(tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
-    setSized(tape, sp_point, value, size) catch return MemoryError.NotEnoughMemory;
+pub fn pushSized(tape: []u8, value: isize, size: u8) (AddressError || MemoryError)!void {
+    const sp_point = wordUnsigned(tape, Stack.SP) catch unreachable;
+    setSized(tape, sp_point, value, size) catch return AddressError.BadAddress;
     try reserveSized(tape, size);
 }
 
-pub fn pop(tape: []u8, value: isize) AddressError!void {
-    try subtractWord(tape, Stack.SP, value, null);
+pub fn popw(tape: []u8, value: usize) void {
+    subtractWord(tape, Stack.SP, @as(isize, @bitCast(value)) * global.word_size, null) catch unreachable;
 }
 
-pub fn newFrame(tape: []u8) MemoryError!void {
-    const fp_point = wordValue(tape, Stack.FP) catch return MemoryError.NotEnoughMemory;
+pub fn popb(tape: []u8, value: usize) void {
+    subtractWord(tape, Stack.SP, @bitCast(value), null) catch unreachable;
+}
 
-    const sp_point = wordUnsigned(tape, Stack.SP) catch return MemoryError.NotEnoughMemory;
-    setUnsigned(tape, Stack.FP, sp_point) catch return MemoryError.NotEnoughMemory;
+pub fn newFrame(tape: []u8) (AddressError || MemoryError)!void {
+    const fp_point = wordValue(tape, Stack.FP) catch unreachable;
+
+    const sp_point = wordUnsigned(tape, Stack.SP) catch unreachable;
+    setUnsigned(tape, Stack.FP, sp_point) catch unreachable;
 
     try push(tape, fp_point, null);
 }
@@ -486,9 +501,9 @@ pub fn @"return"(tape: []u8) AddressError!void {
     try setUnsigned(tape, Stack.FP, fp_ret);
 }
 
-pub fn call(tape: []u8, arg_count: isize) MemoryError!void {
+pub fn call(tape: []u8, arg_count: isize) (AddressError || MemoryError)!void {
     if (arg_count > global.num_registers)
-        return MemoryError.NotEnoughMemory;
+        return MemoryError.ExceededRegisterCount;
 
     try newFrame(tape);
 
@@ -499,7 +514,7 @@ pub fn call(tape: []u8, arg_count: isize) MemoryError!void {
         i += 1;
         reg_addr += global.word_size;
     }) {
-        const reg_val = wordValue(&global.global_mem, reg_addr) catch return MemoryError.NotEnoughMemory;
+        const reg_val = wordValue(&global.global_mem, reg_addr) catch unreachable;
         try push(tape, reg_val, null);
     }
 }
@@ -523,7 +538,7 @@ pub fn storeString(tape: []u8, address: usize, str: []const u8) AddressError!voi
 }
 
 pub fn pushString(tape: []u8, str: []const u8) (MemoryError || AddressError)!void {
-    const sp_point = try wordUnsigned(tape, Stack.SP);
+    const sp_point = wordUnsigned(tape, Stack.SP) catch unreachable;
     try storeString(tape, sp_point, str);
     try reserveSized(tape, str.len + 1);
 }
