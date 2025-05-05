@@ -83,7 +83,7 @@ fn resolveSymbol(self: InterpretContext, tape: []const u8, symbol: []const u8) (
     return label.address;
 }
 
-fn resolve(self: InterpretContext, tape: *[]const u8, str: []const u8, is_value_resolution: bool, instr_size: ?u8, init: bool) (ArgumentError || instruction.AddressError || LabelError)!isize {
+fn resolve(self: InterpretContext, tape: *[]u8, str: []const u8, is_value_resolution: bool, instr_size: ?u8, init: bool) (ArgumentError || instruction.AddressError || LabelError)!isize {
     var value: isize = undefined;
     const size: ?u8 = if (init) instr_size else null;
 
@@ -168,18 +168,18 @@ fn resolve(self: InterpretContext, tape: *[]const u8, str: []const u8, is_value_
     return value;
 }
 
-pub fn resolveValue(self: InterpretContext, tape: []const u8, val_str: []const u8, instr_size: ?u8) (ArgumentError || AddressError || LabelError)!isize {
+pub fn resolveValue(self: InterpretContext, tape: []u8, val_str: []const u8, instr_size: ?u8) (ArgumentError || AddressError || LabelError)!isize {
     var tape_mut = tape;
     return try self.resolve(&tape_mut, val_str, true, instr_size, true);
 }
 
-pub fn resolveAddress(self: InterpretContext, tape: *[]const u8, addr_str: []const u8) (ArgumentError || AddressError || LabelError)!usize {
+pub fn resolveAddress(self: InterpretContext, tape: *[]u8, addr_str: []const u8) (ArgumentError || AddressError || LabelError)!usize {
     const address: usize = @bitCast(try self.resolve(tape, addr_str, false, null, true));
     self.debugPrint(.interpret_proc, "\t\tresolved address: {d}\n", .{address});
     return address;
 }
 
-pub fn resolveFloat(self: InterpretContext, tape: []const u8, float_str: []const u8) (ArgumentError || AddressError || LabelError)!float {
+pub fn resolveFloat(self: InterpretContext, tape: []u8, float_str: []const u8) (ArgumentError || AddressError || LabelError)!float {
     if (float_str.len == 0)
         return ArgumentError.CouldNotParse;
 
@@ -191,7 +191,7 @@ pub fn resolveFloat(self: InterpretContext, tape: []const u8, float_str: []const
     return flt;
 }
 
-pub fn resolveString(self: InterpretContext, tape: []const u8, str: []const u8) (ArgumentError || AddressError || LabelError)!ManagedString {
+pub fn resolveString(self: InterpretContext, tape: []u8, str: []const u8) (ArgumentError || AddressError || LabelError)!ManagedString {
     var tape_mut = tape;
     const str_addr = self.resolveAddress(&tape_mut, str) catch |err| switch (err) {
         ArgumentError.CouldNotParse, LabelError.LabelNotFound => {

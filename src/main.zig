@@ -6,7 +6,7 @@ const CommandAdressingError = command_exec.CommandAdressingError;
 pub const std_options: std.Options = .{ .log_level = .debug, .logFn = @import("lib/commandline/log.zig").logFn };
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     const allocator = gpa.allocator();
     defer _ = gpa.deinit();
 

@@ -22,55 +22,58 @@ fn execute(args: []const []const u8) CommandExecutionError![]const u8 {
 
     const path = args[2];
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     const allocator = gpa.allocator();
     defer _ = gpa.deinit();
 
     const source = file_ops.readFile(path, allocator) catch |err| return @errorName(err);
     defer allocator.free(source);
 
-    std.log.info("Constructing source object...", .{});
-    var source_obj = SourceObject.construct(args, source, path, allocator) catch |err| {
-        std.log.info("Failed to construct source object: {s}", .{@errorName(err)});
-        return CommandExecutionError.ExecutionFailed;
-    };
-    defer source_obj.dispose();
+    const line_iter = IR_parser.tokenize(source);
+    var instr_iter = IR_parser.InstructionIterator.construct(line_iter);
+    const lang_config = IR_parser.readLangConfig(&instr_iter);
 
     std.log.info("Picking up workflow...", .{});
-    try configureInterpret(&source_obj);
+    switch (lang_config.language) {
+        .soar_IR => {
+            std.log.info("Constructing source object...", .{});
+            var source_obj = SourceObject.construct(args, source, path, allocator) catch |err| {
+                std.log.info("Failed to construct source object: {s}", .{@errorName(err)});
+                return CommandExecutionError.ExecutionFailed;
+            };
+            defer source_obj.dispose();
+
+            try configureInterpret(&source_obj);
+        },
+        .soar_hlvl => std.log.err("soar_hlvl compiler is currently in development", .{}),
+    }
 
     return "exit code 0";
 }
 
 fn configureInterpret(source_obj: *SourceObject) CommandExecutionError!void {
-    switch (source_obj.lang_config.language) {
-        .soar_IR => {
-            FunctionTableLog.info("Creating function table...", .{});
-            source_obj.createFnTable() catch |err| {
-                FunctionTableLog.err("Failed to create function table: {s}", .{@errorName(err)});
-                return CommandExecutionError.ExecutionFailed;
-            };
+    FunctionTableLog.info("Creating function table...", .{});
+    source_obj.createFnTable() catch |err| {
+        FunctionTableLog.err("Failed to create function table: {s}", .{@errorName(err)});
+        return CommandExecutionError.ExecutionFailed;
+    };
 
-            var ipret_ctx = InterpretContext{ .source_obj = source_obj };
+    var ipret_ctx = InterpretContext{ .source_obj = source_obj };
 
-            // turn on debug mode(s)
-            if (flag_parser.containsFlag(source_obj.invoke_args, "-d")) {
-                ipret_ctx.debug_interpret_proc = flag_parser.containsFlag(source_obj.invoke_args, "--ipretproc");
-                ipret_ctx.debug_visual_stack = flag_parser.containsFlag(source_obj.invoke_args, "--vsstack");
-            }
-
-            IpretLog.info("Feeding up interpreter...", .{});
-            ipret_ctx.interpret(&source_obj.instr_iter) catch |err| switch (err) {
-                InterpretError.ExecutionAborted => {
-                    IpretLog.info("Execution intentionally aborted", .{});
-                },
-                else => {
-                    IpretLog.err("Interpreter shut down: {s}", .{@errorName(err)});
-                    return CommandExecutionError.ExecutionFailed;
-                },
-            };
-            IpretLog.info("Interpreter shut down after successful execution", .{});
-        },
-        .soar_hlvl => std.log.err("soar_hlvl compiler is currently being developed", .{}),
+    // turn on debug mode(s)
+    if (flag_parser.containsFlag(source_obj.invoke_args, "-d")) {
+        ipret_ctx.debug_interpret_proc = flag_parser.containsFlag(source_obj.invoke_args, "--ipretproc");
+        ipret_ctx.debug_visual_stack = flag_parser.containsFlag(source_obj.invoke_args, "--vsstack");
     }
+
+    IpretLog.info("Fed up interpreter...", .{});
+    ipret_ctx.interpret(&source_obj.instr_iter) catch |err| switch (err) {
+        InterpretError.ExecutionAborted => {
+            IpretLog.info("Execution intentionally aborted", .{});
+        },
+        else => {
+            IpretLog.err("Interpreter shut down: {s}", .{@errorName(err)});
+            return CommandExecutionError.ExecutionFailed;
+        },
+    };
 }
